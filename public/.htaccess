@@ -5,6 +5,10 @@
 
     RewriteEngine On
 
+    # Never serve dotfiles (.htaccess, .env, …); /.well-known stays open for SSL renewals
+    RewriteCond %{REQUEST_URI} !/\.well-known/
+    RewriteRule (^|/)\. - [F,L]
+
     # ── Authorization header passthrough (covers Apache CGI / cPanel / FastCGI) ──
     # Method 1: standard
     RewriteCond %{HTTP:Authorization} .
