@@ -536,7 +536,7 @@ class QuotationController extends Controller
     public function pdf($id)
     {
         $quotation = Quotation::with(['customer', 'items'])->findOrFail($id);
-        $settings  = AccountingSetting::where('user_id', $quotation->user_id)->first();
+        $settings  = AccountingSetting::forCompany();
         $company   = optional($settings)->company ?? [];
         $terms     = optional($settings)->quotation ?? [];
 

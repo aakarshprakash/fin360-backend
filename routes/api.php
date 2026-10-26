@@ -356,9 +356,16 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/reports/{type}',                [AccountingDashboardController::class, 'report']);
         });
 
-        // ── Settings ───────────────────────────────────────────────────────────
-        Route::middleware('permission:accounting_settings,manage_accounting')->group(function () {
+        // ── Settings (organisation-wide) ───────────────────────────────────────
+        // Anyone who prints documents can read the letterhead, template and
+        // payment methods; only accounting_settings may change them.
+        Route::middleware('permission:accounting_settings,manage_accounting,view_accounting,view_invoices,view_quotations')->group(function () {
             Route::get('/settings',                      [AccountingSettingsController::class, 'index']);
+            Route::get('/invoice-settings',              [InvoiceSettingsController::class, 'index']);
+            Route::get('/payment-methods',               [PaymentMethodController::class, 'index']);
+            Route::get('/payment-methods/{id}',          [PaymentMethodController::class, 'show']);
+        });
+        Route::middleware('permission:accounting_settings')->group(function () {
             Route::put('/settings',                      [AccountingSettingsController::class, 'update']);
             Route::post('/settings/signature',            [AccountingSettingsController::class, 'uploadSignature']);
             Route::delete('/settings/signature',          [AccountingSettingsController::class, 'deleteSignature']);
@@ -390,17 +397,10 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/financial-years/{id}/balances',      [FinancialYearController::class, 'balances']);
         });
 
-        // ── Invoice Template Settings ──────────────────────────────────────────
-        Route::middleware('permission:accounting_settings,manage_accounting')->group(function () {
-            Route::get('/invoice-settings',              [InvoiceSettingsController::class, 'index']);
+        // ── Invoice Template Settings & Payment Methods (writes) ───────────────
+        Route::middleware('permission:accounting_settings')->group(function () {
             Route::put('/invoice-settings',              [InvoiceSettingsController::class, 'update']);
-        });
-
-        // ── Payment Methods ────────────────────────────────────────────────────
-        Route::middleware('permission:accounting_settings,manage_accounting')->group(function () {
-            Route::get('/payment-methods',               [PaymentMethodController::class, 'index']);
             Route::post('/payment-methods',              [PaymentMethodController::class, 'store']);
-            Route::get('/payment-methods/{id}',          [PaymentMethodController::class, 'show']);
             Route::put('/payment-methods/{id}',          [PaymentMethodController::class, 'update']);
             Route::delete('/payment-methods/{id}',       [PaymentMethodController::class, 'destroy']);
         });

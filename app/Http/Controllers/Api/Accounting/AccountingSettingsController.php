@@ -5,33 +5,26 @@ namespace App\Http\Controllers\Api\Accounting;
 use App\Http\Controllers\Controller;
 use App\Models\Accounting\AccountingSetting;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\Storage;
 use Illuminate\Support\Str;
 
+/**
+ * Organisation-wide accounting settings: business & tax details (letterhead),
+ * accounting preferences, document numbering and quotation terms. One row is
+ * shared by every user — see AccountingSetting::forCompany().
+ */
 class AccountingSettingsController extends Controller
 {
     /** GET /api/accounting/settings */
     public function index()
     {
-        $userId  = Auth::id();
-        $setting = AccountingSetting::where('user_id', $userId)->first();
-
-        if (!$setting) {
-            $setting = AccountingSetting::create([
-                'user_id'    => $userId,
-                'company'    => $this->defaultCompany(),
-                'accounting' => $this->defaultAccounting(),
-                'numbering'  => $this->defaultNumbering(),
-                'quotation'  => $this->defaultQuotation(),
-            ]);
-        }
+        $setting = $this->setting();
 
         return response()->json([
             'data' => [
                 'company'    => array_merge($this->defaultCompany(), $setting->company ?? []),
-                'accounting' => $setting->accounting,
-                'numbering'  => $setting->numbering,
+                'accounting' => array_merge($this->defaultAccounting(), $setting->accounting ?? []),
+                'numbering'  => array_merge($this->defaultNumbering(), $setting->numbering ?? []),
                 'quotation'  => array_merge($this->defaultQuotation(), $setting->quotation ?? []),
             ],
         ]);
@@ -47,20 +40,18 @@ class AccountingSettingsController extends Controller
             'quotation'  => 'nullable|array',
         ]);
 
-        $userId  = Auth::id();
-        $setting = AccountingSetting::where('user_id', $userId)->first();
-
-        if ($setting) {
-            $setting->update($validated);
-        } else {
-            $validated['user_id'] = $userId;
-            $setting = AccountingSetting::create(array_merge([
-                'company'    => $this->defaultCompany(),
-                'accounting' => $this->defaultAccounting(),
-                'numbering'  => $this->defaultNumbering(),
-                'quotation'  => $this->defaultQuotation(),
-            ], $validated));
+        $setting = $this->setting();
+        $changes = [];
+        foreach ($validated as $section => $values) {
+            if (is_array($values)) {
+                // Merge so a partial payload never wipes keys it didn't send (e.g. logo paths)
+                $changes[$section] = array_merge(
+                    $setting->{$section} ?? [],
+                    AccountingSetting::normalizeKeys($values)
+                );
+            }
         }
+        $setting->update($changes);
 
         return response()->json(['message' => 'Accounting settings updated successfully']);
     }
@@ -68,60 +59,13 @@ class AccountingSettingsController extends Controller
     /** POST /api/accounting/settings/logo */
     public function uploadLogo(Request $request)
     {
-        $request->validate([
-            'image' => 'required|image|mimes:jpg,jpeg,png|max:2048',
-        ]);
-
-        $userId  = Auth::id();
-        $setting = AccountingSetting::where('user_id', $userId)->first();
-
-        $oldPath = $setting->company['companyLogo'] ?? null;
-        if ($oldPath && Storage::disk('public')->exists($oldPath)) {
-            Storage::disk('public')->delete($oldPath);
-        }
-
-        $path = $request->file('image')->storeAs(
-            'logos',
-            $userId . '-' . Str::random(8) . '.' . $request->file('image')->extension(),
-            'public'
-        );
-
-        $company = array_merge($this->defaultCompany(), $setting->company ?? [], ['companyLogo' => $path]);
-
-        if ($setting) {
-            $setting->update(['company' => $company]);
-        } else {
-            AccountingSetting::create([
-                'user_id'    => $userId,
-                'company'    => $company,
-                'accounting' => $this->defaultAccounting(),
-                'numbering'  => $this->defaultNumbering(),
-                'quotation'  => $this->defaultQuotation(),
-            ]);
-        }
-
-        return response()->json([
-            'message' => 'Logo uploaded successfully',
-            'path'    => $path,
-            'url'     => Storage::disk('public')->url($path),
-        ]);
+        return $this->storeCompanyImage($request, 'companyLogo', 'logos', 'Logo uploaded successfully');
     }
 
     /** DELETE /api/accounting/settings/logo */
     public function deleteLogo()
     {
-        $userId  = Auth::id();
-        $setting = AccountingSetting::where('user_id', $userId)->first();
-
-        if ($setting) {
-            $path = $setting->company['companyLogo'] ?? null;
-            if ($path && Storage::disk('public')->exists($path)) {
-                Storage::disk('public')->delete($path);
-            }
-            $company = $setting->company ?? [];
-            $company['companyLogo'] = '';
-            $setting->update(['company' => $company]);
-        }
+        $this->clearCompanyImage('companyLogo');
 
         return response()->json(['message' => 'Logo removed successfully']);
     }
@@ -129,62 +73,69 @@ class AccountingSettingsController extends Controller
     /** POST /api/accounting/settings/signature */
     public function uploadSignature(Request $request)
     {
-        $request->validate([
-            'image' => 'required|image|mimes:jpg,jpeg,png|max:2048',
-        ]);
+        return $this->storeCompanyImage($request, 'sealSignatureImage', 'signatures', 'Signature uploaded successfully');
+    }
 
-        $userId  = Auth::id();
-        $setting = AccountingSetting::where('user_id', $userId)->first();
+    /** DELETE /api/accounting/settings/signature */
+    public function deleteSignature()
+    {
+        $this->clearCompanyImage('sealSignatureImage');
 
-        $oldPath = $setting->company['sealSignatureImage'] ?? null;
-        if ($oldPath && Storage::disk('public')->exists($oldPath)) {
-            Storage::disk('public')->delete($oldPath);
-        }
+        return response()->json(['message' => 'Signature removed successfully']);
+    }
 
-        $path = $request->file('image')->storeAs(
-            'signatures',
-            $userId . '-' . Str::random(8) . '.' . $request->file('image')->extension(),
-            'public'
-        );
+    private function setting(): AccountingSetting
+    {
+        $setting = AccountingSetting::forCompany();
 
-        $company = array_merge($this->defaultCompany(), $setting->company ?? [], ['sealSignatureImage' => $path]);
-
-        if ($setting) {
-            $setting->update(['company' => $company]);
-        } else {
-            AccountingSetting::create([
-                'user_id'    => $userId,
-                'company'    => $company,
+        if (empty($setting->company)) {
+            $setting->update([
+                'company'    => $this->defaultCompany(),
                 'accounting' => $this->defaultAccounting(),
                 'numbering'  => $this->defaultNumbering(),
                 'quotation'  => $this->defaultQuotation(),
             ]);
         }
 
+        return $setting;
+    }
+
+    private function storeCompanyImage(Request $request, string $key, string $folder, string $message)
+    {
+        $request->validate([
+            'image' => 'required|image|mimes:jpg,jpeg,png|max:2048',
+        ]);
+
+        $setting = $this->setting();
+        $this->deleteStoredFile($setting->company[$key] ?? null);
+
+        $path = $request->file('image')->storeAs(
+            $folder,
+            'company-' . Str::random(8) . '.' . $request->file('image')->extension(),
+            'public'
+        );
+
+        $setting->update(['company' => array_merge($setting->company ?? [], [$key => $path])]);
+
         return response()->json([
-            'message' => 'Signature uploaded successfully',
+            'message' => $message,
             'path'    => $path,
             'url'     => Storage::disk('public')->url($path),
         ]);
     }
 
-    /** DELETE /api/accounting/settings/signature */
-    public function deleteSignature()
+    private function clearCompanyImage(string $key): void
     {
-        $userId  = Auth::id();
-        $setting = AccountingSetting::where('user_id', $userId)->first();
+        $setting = $this->setting();
+        $this->deleteStoredFile($setting->company[$key] ?? null);
+        $setting->update(['company' => array_merge($setting->company ?? [], [$key => ''])]);
+    }
 
-        if ($setting) {
-            $path = $setting->company['sealSignatureImage'] ?? null;
-            if ($path && Storage::disk('public')->exists($path)) {
-                Storage::disk('public')->delete($path);
-            }
-            $company = $setting->company ?? [];
-            $company['sealSignatureImage'] = '';
-            $setting->update(['company' => $company]);
+    private function deleteStoredFile(?string $path): void
+    {
+        if ($path && Storage::disk('public')->exists($path)) {
+            Storage::disk('public')->delete($path);
         }
-
-        return response()->json(['message' => 'Signature removed successfully']);
     }
 
     private function defaultCompany(): array

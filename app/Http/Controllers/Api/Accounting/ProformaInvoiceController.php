@@ -437,7 +437,7 @@ class ProformaInvoiceController extends Controller
     public function pdf($id)
     {
         $proforma = ProformaInvoice::with(['customer', 'items'])->findOrFail($id);
-        $settings = AccountingSetting::where('user_id', $proforma->user_id)->first();
+        $settings = AccountingSetting::forCompany();
         $company  = optional($settings)->company ?? [];
         $terms    = optional($settings)->quotation ?? [];
 

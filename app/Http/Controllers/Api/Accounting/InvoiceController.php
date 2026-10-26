@@ -312,7 +312,7 @@ class InvoiceController extends Controller
     public function pdf($id)
     {
         $invoice = Invoice::with(['customer', 'items'])->findOrFail($id);
-        $company = optional(AccountingSetting::where('user_id', $invoice->user_id)->first())->company ?? [];
+        $company = AccountingSetting::forCompany()->company ?? [];
 
         $pdf = Pdf::loadView('accounting.pdf.invoice', [
             'invoice' => $invoice,

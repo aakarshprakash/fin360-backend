@@ -5,27 +5,15 @@ namespace App\Http\Controllers\Api\Accounting;
 use App\Http\Controllers\Controller;
 use App\Models\Accounting\InvoiceTemplateSetting;
 use Illuminate\Http\Request;
-use Illuminate\Support\Facades\Auth;
 
+/** Organisation-wide invoice template (print layout, prefix, defaults). */
 class InvoiceSettingsController extends Controller
 {
     /** GET /api/accounting/invoice-settings */
     public function index()
     {
-        $userId  = Auth::id();
-        $setting = InvoiceTemplateSetting::where('user_id', $userId)->first();
+        $setting = InvoiceTemplateSetting::forCompany();
 
-        if (!$setting) {
-            $setting = InvoiceTemplateSetting::create([
-                'user_id'               => $userId,
-                'invoice_prefix'        => 'INV-',
-                'footer_text'           => 'Thank you for your business!',
-                'terms_and_conditions'  => 'Payment is due within 30 days of the invoice date.',
-                'default_payment_terms' => 'Net 30',
-                'invoice_logo'          => '',
-                'invoice_theme'         => 'default',
-            ]);
-        }
 
         return response()->json([
             'data' => [
@@ -59,9 +47,9 @@ class InvoiceSettingsController extends Controller
         }
         $request->validate($rules);
 
-        $userId  = Auth::id();
-        $setting = InvoiceTemplateSetting::where('user_id', $userId)->first();
+        $setting  = InvoiceTemplateSetting::forCompany();
         $defaults = [
+
             'invoice_prefix' => 'INV-', 'footer_text' => '', 'terms_and_conditions' => '',
             'default_payment_terms' => 'Net 30', 'invoice_logo' => '', 'invoice_theme' => 'default',
         ];
@@ -72,12 +60,8 @@ class InvoiceSettingsController extends Controller
                 ?? ($setting->{$snake} ?? $defaults[$snake]);
         }
 
-        if ($setting) {
-            $setting->update($data);
-        } else {
-            $data['user_id'] = $userId;
-            InvoiceTemplateSetting::create($data);
-        }
+        $setting->update($data);
+
 
         return response()->json(['message' => 'Invoice settings updated successfully']);
     }

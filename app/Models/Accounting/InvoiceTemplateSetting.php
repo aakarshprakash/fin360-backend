@@ -22,5 +22,20 @@ class InvoiceTemplateSetting extends Model
     {
         return $this->belongsTo(\App\Models\User::class);
     }
+
+    /** The organisation's invoice template: the single row with no user_id. */
+    public static function forCompany(): self
+    {
+        return static::whereNull('user_id')->first()
+            ?? static::create([
+                'user_id'               => null,
+                'invoice_prefix'        => 'INV-',
+                'footer_text'           => 'Thank you for your business!',
+                'terms_and_conditions'  => 'Payment is due within 30 days of the invoice date.',
+                'default_payment_terms' => 'Net 30',
+                'invoice_logo'          => '',
+                'invoice_theme'         => 'default',
+            ]);
+    }
 }
 
