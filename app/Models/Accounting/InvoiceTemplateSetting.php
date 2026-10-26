@@ -16,6 +16,11 @@ class InvoiceTemplateSetting extends Model
         'default_payment_terms',
         'invoice_logo',
         'invoice_theme',
+        'layout',
+    ];
+
+    protected $casts = [
+        'layout' => 'array',
     ];
 
     public function user()
