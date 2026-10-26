@@ -1,6 +1,15 @@
 <IfModule mod_rewrite.c>
     RewriteEngine On
 
+    # This file is only used when the document root is the project root
+    # (cPanel). Only public/ is meant to be reachable: refuse secrets, source,
+    # config and private storage. /.well-known stays open for SSL renewals.
+    RewriteCond %{REQUEST_URI} !^/\.well-known/
+    RewriteRule ^\. - [F,L]
+    RewriteRule ^(app|bootstrap|config|database|resources|routes|tests|vendor|docs|node_modules)(/|$) - [F,L]
+    RewriteRule ^storage/(app|framework|logs)(/|$) - [F,L]
+    RewriteRule ^(artisan|server\.php|composer\.(json|lock)|package(-lock)?\.json|phpunit\.xml|webpack\.mix\.js|README\.md|DEPLOY\.txt)$ - [F,L]
+
     # Handle Authorization Header
     RewriteCond %{HTTP:Authorization} .
     RewriteRule .* - [E=HTTP_AUTHORIZATION:%{HTTP:Authorization}]

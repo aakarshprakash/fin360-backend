@@ -1,0 +1,197 @@
+FIN360 BACKEND — MANUAL DEPLOYMENT
+Release 2.0.0 (Lead CRM -> Fin360)
+==============================================================================
+
+Package:  fin360-backend-2.0.0.zip
+Server:   cPanel, PHP 8.1+ (production runs 8.1), MySQL 5.7+ / MariaDB 10.4+
+Layout:   the document root is the PROJECT ROOT (the folder containing .env,
+          artisan, app/, public/). The root index.php + .htaccess forward
+          requests into public/.
+
+The zip contains the full application with production dependencies (vendor/,
+composer --no-dev). It does NOT contain .env or any uploaded files
+(storage/app/public: logos, seals), so extracting it over the live folder
+keeps your configuration and uploads.
+
+Time needed: about 15 minutes. Do it outside office hours if possible.
+
+
+------------------------------------------------------------------------------
+0. SECURITY CHECK FIRST (2 minutes)
+------------------------------------------------------------------------------
+The old root .htaccess did not block direct access to files such as .env.
+Before updating, open this in a private browser window:
+
+    https://leadcrm.peoplenex.online/.env
+
+  * If you get "403 Forbidden" or "404 Not Found": fine, continue.
+  * If the file downloads or its text shows: it was publicly readable.
+    After this deployment (which blocks it), change the database password
+    in cPanel > MySQL Databases and update DB_PASSWORD in .env, and change
+    MAIL_PASSWORD if one is set. Also check https://leadcrm.peoplenex.online/storage/logs/laravel.log
+    the same way.
+
+
+------------------------------------------------------------------------------
+1. BACK UP (do not skip)
+------------------------------------------------------------------------------
+  a) Database: cPanel > phpMyAdmin > select the database > Export > Quick > SQL.
+     Keep the downloaded .sql file.
+  b) Files: cPanel > File Manager > select the backend folder > Compress
+     (zip) > download it. At minimum download .env and storage/app/public/.
+
+
+------------------------------------------------------------------------------
+2. PUT THE API IN MAINTENANCE MODE (needs Terminal; skip if you have none)
+------------------------------------------------------------------------------
+    cd ~/path/to/backend          (the folder containing artisan)
+    php artisan down
+
+  If "php" is not found, use the full path, e.g. /usr/local/bin/php or
+  /opt/cpanel/ea-php81/root/usr/bin/php
+
+
+------------------------------------------------------------------------------
+3. UPLOAD AND EXTRACT
+------------------------------------------------------------------------------
+  a) File Manager > open the backend folder > Upload fin360-backend-2.0.0.zip
+  b) Select the zip > Extract > into the SAME folder. Allow overwriting.
+  c) Delete the zip afterwards.
+
+
+------------------------------------------------------------------------------
+4. DELETE OLD FILES THAT ARE NO LONGER PART OF THE APP
+------------------------------------------------------------------------------
+Extracting does not remove old files. These MUST be deleted — several let
+anyone on the internet run code or read server details:
+
+    debug.php
+    test.php
+    DEPLOY_NOTES.txt
+    public/install.php        (re-installer, no password)
+    public/updater.php        (uploads and runs ZIP files)
+    public/clearcache.php     (key is published in the file)
+
+Optional tidy-up (harmless if left; nothing references them any more):
+
+    app/Http/Controllers/Api/LeadController.php
+    app/Http/Controllers/Api/FollowupController.php
+    app/Http/Controllers/Api/CallLogController.php
+    app/Http/Controllers/Api/NoteController.php
+    app/Http/Controllers/Api/CustomerController.php
+    app/Http/Controllers/Api/DashboardController.php
+    app/Http/Controllers/Api/LeadSourceController.php
+    app/Http/Controllers/Api/LeadStatusController.php
+    app/Http/Controllers/Api/LeadAssignmentController.php
+    app/Http/Controllers/Api/RoundRobinController.php
+    app/Models/Lead.php, Followup.php, CallLog.php, Note.php, Customer.php,
+      LeadSource.php, LeadStatus.php, LeadTransfer.php, RoundRobinSetting.php
+    database/seeders/LeadSourceSeeder.php, LeadStatusSeeder.php
+    docs/*.md that are not in docs/legacy/ (old copies)
+
+
+------------------------------------------------------------------------------
+5. CHECK .env
+------------------------------------------------------------------------------
+Edit .env (File Manager > Edit) and make sure these are set:
+
+    APP_NAME=Fin360
+    APP_ENV=production
+    APP_DEBUG=false          <- must be false in production
+
+Leave DB_*, APP_KEY and MAIL_* as they are (unless step 0 told you to change
+passwords).
+
+
+------------------------------------------------------------------------------
+6. RUN THE UPDATE COMMANDS
+------------------------------------------------------------------------------
+With Terminal (cPanel > Advanced > Terminal), in the backend folder:
+
+    php artisan migrate --force
+    php artisan db:seed --class=RolesAndPermissionsSeeder --force
+    php artisan optimize:clear
+    php artisan up
+
+Expected output of migrate (only these three):
+
+    Migrated: 2026_10_26_000001_remove_crm_permissions
+    Migrated: 2026_10_26_000002_make_accounting_settings_company_wide
+    Migrated: 2026_10_27_000001_add_layout_to_invoice_template_settings
+
+No Terminal? Use a one-time cron job instead:
+  cPanel > Cron Jobs > add a job running every minute with this command
+  (adjust the path), wait two minutes, then DELETE the cron job:
+
+    cd /home/USER/path/to/backend && php artisan migrate --force && php artisan db:seed --class=RolesAndPermissionsSeeder --force && php artisan optimize:clear
+
+  Do not leave it running.
+
+
+------------------------------------------------------------------------------
+7. VERIFY
+------------------------------------------------------------------------------
+  [ ] https://leadcrm.peoplenex.online/api
+        -> {"app":"Fin360 API","status":"running","version":"2.0.0",...}
+  [ ] https://leadcrm.peoplenex.online/.env                     -> 403
+  [ ] https://leadcrm.peoplenex.online/storage/logs/laravel.log -> 403
+  [ ] https://leadcrm.peoplenex.online/composer.json            -> 403
+  [ ] Log in on the frontend. Dashboard loads.
+  [ ] Open any invoice > Preview: the letterhead shows the company name,
+      logo, GSTIN/PAN and seal for EVERY user, not just one.
+  [ ] Settings > Invoice Template opens the template builder; Save works.
+  [ ] An uploaded logo still loads (e.g. Settings > Business & Tax Details).
+
+
+------------------------------------------------------------------------------
+WHAT THE MIGRATIONS CHANGE IN THE DATABASE
+------------------------------------------------------------------------------
+1. remove_crm_permissions
+   Deletes the Lead CRM permission definitions (leads, follow-ups, call logs,
+   notes, CRM customers, lead sources/statuses) and their role/user grants.
+   CRM DATA TABLES ARE NOT TOUCHED (leads, followups, ...). Drop them later
+   yourself once archived.
+
+2. make_accounting_settings_company_wide
+   Business & tax details (letterhead), accounting preferences, numbering
+   and the invoice template were stored per user; most copies were blank.
+   One company-wide row is created from the most complete profile (on the
+   current data: Sruthi's — GSTIN 32BGKPA0180J1ZT). That user's old row is
+   kept as history; every other user's copy is DELETED.
+
+3. add_layout_to_invoice_template_settings
+   Adds a JSON column for the invoice template builder. No data changes.
+
+The roles seeder adds the Finance Manager, Accountant and Viewer roles and
+refreshes the Super Admin / Admin permission lists. Existing roles and users
+keep their assignments.
+
+Behaviour changes users may notice:
+  * Only users with the "Accounting Settings" permission (admins) can change
+    company details, the invoice template and payment methods. Accountants
+    could before.
+  * Everyone who can view invoices/quotations sees the same letterhead.
+  * The CRM screens and endpoints are gone.
+
+
+------------------------------------------------------------------------------
+ROLLBACK
+------------------------------------------------------------------------------
+  1. php artisan down (if available)
+  2. Restore the files backup from step 1b over the backend folder.
+  3. phpMyAdmin > the database > Import > the .sql backup from step 1a.
+  4. php artisan optimize:clear && php artisan up
+
+
+------------------------------------------------------------------------------
+FRONTEND (Cloudflare Pages)
+------------------------------------------------------------------------------
+No manual step: Cloudflare Pages builds github.com/aakarshprakash/fin360-frontend
+on every push to main. In the Pages project settings confirm:
+
+    Build command:          npm run build
+    Build output directory: dist
+    Environment variable:   VITE_API_BASE_URL = https://leadcrm.peoplenex.online/api
+
+Deploy the backend first, then let the frontend build — the new frontend
+uses API endpoints that only exist in this backend release.
