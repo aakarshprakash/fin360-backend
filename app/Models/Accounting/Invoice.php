@@ -16,8 +16,8 @@ class Invoice extends Model
     protected $fillable = [
         'invoice_number', 'customer_id', 'date', 'due_date',
         'currency', 'exchange_rate', 'subtotal', 'discount',
-        'tax', 'total', 'amount_paid', 'status', 'notes', 'user_id',
-        'use_signature',
+        'tax', 'total', 'amount_paid', 'amount_credited', 'status', 'notes', 'user_id',
+        'use_signature', 'ship_to', 'extra_fields',
     ];
 
     protected $casts = [
@@ -29,7 +29,9 @@ class Invoice extends Model
         'tax'           => 'decimal:2',
         'total'         => 'decimal:2',
         'amount_paid'   => 'decimal:2',
+        'amount_credited' => 'decimal:2',
         'use_signature' => 'boolean',
+        'extra_fields'  => 'array',
     ];
 
     public function customer()

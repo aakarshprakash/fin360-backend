@@ -56,7 +56,7 @@ Route::get('/', function () {
     return response()->json([
         'app'       => 'Fin360 API',
         'status'    => 'running',
-        'version'   => '2.0.0',
+        'version'   => '2.1.0',
         'timestamp' => now()->toDateTimeString(),
     ]);
 });
@@ -179,11 +179,15 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::get('/products',              [ProductController::class, 'index']);
             Route::get('/products/categories',   [ProductController::class, 'categories']);
             Route::get('/products/{id}',         [ProductController::class, 'show']);
+            Route::get('/products/{id}/stock-movements', [ProductController::class, 'stockMovements']);
         });
         Route::middleware('permission:manage_accounting')->group(function () {
             Route::post('/products',             [ProductController::class, 'store']);
             Route::put('/products/{id}',         [ProductController::class, 'update']);
             Route::delete('/products/{id}',      [ProductController::class, 'destroy']);
+            Route::post('/products/{id}/image',  [ProductController::class, 'uploadImage']);
+            Route::delete('/products/{id}/image', [ProductController::class, 'deleteImage']);
+            Route::post('/products/{id}/stock',  [ProductController::class, 'adjustStock']);
         });
 
         // ── Chart of Accounts ──────────────────────────────────────────────────
@@ -246,6 +250,9 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::delete('/invoices/{id}',              [InvoiceController::class, 'destroy']);
             Route::patch('/invoices/{id}/status',        [InvoiceController::class, 'updateStatus']);
             Route::post('/invoices/{id}/payments',       [InvoiceController::class, 'addPayment']);
+            Route::delete('/invoices/{id}/payments/{paymentId}', [InvoiceController::class, 'deletePayment']);
+            Route::post('/invoices/{id}/credit-notes',   [InvoiceController::class, 'storeCreditNote']);
+            Route::delete('/invoices/{id}/credit-notes/{creditNoteId}', [InvoiceController::class, 'deleteCreditNote']);
             Route::post('/invoices/{id}/send',           [InvoiceController::class, 'send']);
             Route::post('/credit-notes',                 [InvoiceController::class, 'createCreditNote']);
         });
@@ -371,6 +378,8 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::delete('/settings/signature',          [AccountingSettingsController::class, 'deleteSignature']);
             Route::post('/settings/logo',                 [AccountingSettingsController::class, 'uploadLogo']);
             Route::delete('/settings/logo',                [AccountingSettingsController::class, 'deleteLogo']);
+            Route::post('/settings/quotation-image/{slot}',   [AccountingSettingsController::class, 'uploadQuotationImage'])->where('slot', 'header|footer');
+            Route::delete('/settings/quotation-image/{slot}', [AccountingSettingsController::class, 'deleteQuotationImage'])->where('slot', 'header|footer');
         });
 
         // ── Recurring Transactions ─────────────────────────────────────────────

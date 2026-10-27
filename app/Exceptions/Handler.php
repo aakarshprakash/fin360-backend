@@ -7,6 +7,7 @@ use Illuminate\Auth\Access\AuthorizationException;
 use Illuminate\Database\Eloquent\ModelNotFoundException;
 use Illuminate\Foundation\Exceptions\Handler as ExceptionHandler;
 use Illuminate\Validation\ValidationException;
+use Illuminate\Http\Exceptions\ThrottleRequestsException;
 use Symfony\Component\HttpKernel\Exception\NotFoundHttpException;
 use Symfony\Component\HttpKernel\Exception\MethodNotAllowedHttpException;
 use Throwable;
@@ -95,6 +96,13 @@ class Handler extends ExceptionHandler
                 'message' => 'Validation failed.',
                 'errors'  => $e->errors(),
             ], 422);
+        }
+
+        // ── 429 Rate limited ─────────────────────────────────
+        if ($e instanceof ThrottleRequestsException) {
+            return response()->json([
+                'message' => 'Too many requests. Please wait a moment and try again.',
+            ], 429, $e->getHeaders());
         }
 
         // ── 500 Any other exception ──────────────────────────

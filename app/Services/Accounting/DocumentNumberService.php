@@ -2,6 +2,8 @@
 
 namespace App\Services\Accounting;
 
+use Illuminate\Database\Eloquent\SoftDeletes;
+
 /**
  * Generates the next sequential document number (invoice, bill, quotation,
  * proforma invoice, etc.) safely.
@@ -17,14 +19,18 @@ namespace App\Services\Accounting;
 class DocumentNumberService
 {
     /**
-     * @param class-string $modelClass Eloquent model class using SoftDeletes.
+     * @param class-string $modelClass Eloquent model class (trashed rows count when it uses SoftDeletes).
      * @param string $column The column holding the formatted number (e.g. 'invoice_number').
      * @param string $prefix The literal prefix to match and prepend (e.g. 'INV-').
      * @param int $padLength Zero-padding width for the numeric suffix.
      */
     public function next(string $modelClass, string $column, string $prefix, int $padLength = 5): string
     {
-        $maxNum = $modelClass::withTrashed()
+        $query = in_array(SoftDeletes::class, class_uses_recursive($modelClass), true)
+            ? $modelClass::withTrashed()
+            : $modelClass::query();
+
+        $maxNum = $query
             ->where($column, 'like', $prefix . '%')
             ->pluck($column)
             ->map(function ($value) use ($prefix) {

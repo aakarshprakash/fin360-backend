@@ -1,8 +1,19 @@
 FIN360 BACKEND — MANUAL DEPLOYMENT
-Release 2.0.0 (Lead CRM -> Fin360)
+Release 2.1.0
 ==============================================================================
 
-Package:  fin360-backend-2.0.0.zip
+What 2.1.0 adds (on top of 2.0.0, the Lead CRM -> Fin360 conversion):
+  * Invoices: part payments, credit notes, voiding payments/credit notes,
+    "Classic GST" boxed invoice template, Ship To, UOM, custom fields.
+  * Products: pictures, SKU/brand/model, feature lists, stock tracking
+    (invoices deduct stock automatically).
+  * Quotations: letterhead design with your own header/footer artwork,
+    product pictures and an editable Terms & Conditions page.
+
+If the server is still on the old Lead CRM version, this one release takes
+it straight to 2.1.0 — follow every step below.
+
+Package:  fin360-backend-2.1.0.zip
 Server:   cPanel, PHP 8.1+ (production runs 8.1), MySQL 5.7+ / MariaDB 10.4+
 Layout:   the document root is the PROJECT ROOT (the folder containing .env,
           artisan, app/, public/). The root index.php + .htaccess forward
@@ -54,7 +65,7 @@ Before updating, open this in a private browser window:
 ------------------------------------------------------------------------------
 3. UPLOAD AND EXTRACT
 ------------------------------------------------------------------------------
-  a) File Manager > open the backend folder > Upload fin360-backend-2.0.0.zip
+  a) File Manager > open the backend folder > Upload fin360-backend-2.1.0.zip
   b) Select the zip > Extract > into the SAME folder. Allow overwriting.
   c) Delete the zip afterwards.
 
@@ -110,20 +121,28 @@ With Terminal (cPanel > Advanced > Terminal), in the backend folder:
 
     php artisan migrate --force
     php artisan db:seed --class=RolesAndPermissionsSeeder --force
+    php artisan storage:link
     php artisan optimize:clear
     php artisan up
 
-Expected output of migrate (only these three):
+(storage:link may say the link already exists — that's fine. Uploaded
+product pictures and quotation letterhead images are served through it.)
+
+Expected output of migrate. From the old Lead CRM version you get all six;
+from 2.0.0 only the last three:
 
     Migrated: 2026_10_26_000001_remove_crm_permissions
     Migrated: 2026_10_26_000002_make_accounting_settings_company_wide
     Migrated: 2026_10_27_000001_add_layout_to_invoice_template_settings
+    Migrated: 2026_10_28_000001_add_print_fields_to_invoices
+    Migrated: 2026_10_29_000001_add_catalog_and_stock_to_products
+    Migrated: 2026_10_30_000001_add_credit_notes_and_payment_accounts
 
 No Terminal? Use a one-time cron job instead:
   cPanel > Cron Jobs > add a job running every minute with this command
   (adjust the path), wait two minutes, then DELETE the cron job:
 
-    cd /home/USER/path/to/backend && php artisan migrate --force && php artisan db:seed --class=RolesAndPermissionsSeeder --force && php artisan optimize:clear
+    cd /home/USER/path/to/backend && php artisan migrate --force && php artisan db:seed --class=RolesAndPermissionsSeeder --force && php artisan storage:link; php artisan optimize:clear
 
   Do not leave it running.
 
@@ -132,7 +151,7 @@ No Terminal? Use a one-time cron job instead:
 7. VERIFY
 ------------------------------------------------------------------------------
   [ ] https://leadcrm.peoplenex.online/api
-        -> {"app":"Fin360 API","status":"running","version":"2.0.0",...}
+        -> {"app":"Fin360 API","status":"running","version":"2.1.0",...}
   [ ] https://leadcrm.peoplenex.online/.env                     -> 403
   [ ] https://leadcrm.peoplenex.online/storage/logs/laravel.log -> 403
   [ ] https://leadcrm.peoplenex.online/composer.json            -> 403
@@ -141,6 +160,10 @@ No Terminal? Use a one-time cron job instead:
       logo, GSTIN/PAN and seal for EVERY user, not just one.
   [ ] Settings > Invoice Template opens the template builder; Save works.
   [ ] An uploaded logo still loads (e.g. Settings > Business & Tax Details).
+  [ ] Products > edit a product > add a picture > it shows in the list.
+  [ ] An unpaid invoice > Record payment (part amount) > status "Partially
+      paid"; then Void it from "Payments & credit notes".
+  [ ] Settings > Quotation Template opens; Letterhead design previews.
 
 
 ------------------------------------------------------------------------------
@@ -162,6 +185,20 @@ WHAT THE MIGRATIONS CHANGE IN THE DATABASE
 3. add_layout_to_invoice_template_settings
    Adds a JSON column for the invoice template builder. No data changes.
 
+4. add_print_fields_to_invoices
+   Adds Ship To and custom-field values to invoices, a unit (UOM) to invoice
+   lines, and contact person / PAN to customers. No data changes.
+
+5. add_catalog_and_stock_to_products
+   Adds picture, SKU, brand, model, features, purchase price and stock
+   fields to products, and a stock movements table. Existing products start
+   with stock tracking OFF, so nothing is deducted until you turn it on.
+
+6. add_credit_notes_and_payment_accounts
+   Adds invoices.amount_credited, the deposit bank account on payments, and
+   date/subtotal/tax/reason to credit notes. Existing payments are untouched;
+   existing invoices start with 0 credited.
+
 The roles seeder adds the Finance Manager, Accountant and Viewer roles and
 refreshes the Super Admin / Admin permission lists. Existing roles and users
 keep their assignments.
@@ -172,6 +209,10 @@ Behaviour changes users may notice:
     could before.
   * Everyone who can view invoices/quotations sees the same letterhead.
   * The CRM screens and endpoints are gone.
+  * An invoice becomes "Paid" by recording payments / credit notes; it can
+    no longer be marked paid by hand while money is outstanding.
+  * An invoice with payments or credit notes can't be deleted until they
+    are voided.
 
 
 ------------------------------------------------------------------------------

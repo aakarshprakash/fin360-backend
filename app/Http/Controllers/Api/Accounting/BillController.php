@@ -280,8 +280,7 @@ class BillController extends Controller
             'reason' => 'nullable|string|max:500',
         ]);
 
-        $nextNum = DebitNote::count() + 1;
-        $debitNoteNumber = 'DN-' . str_pad($nextNum, 5, '0', STR_PAD_LEFT);
+        $debitNoteNumber = $this->numbering->next(DebitNote::class, 'debit_note_number', 'DN-');
 
         $total = 0;
         foreach ($validated['items'] as $item) {

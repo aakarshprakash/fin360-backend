@@ -76,7 +76,11 @@ class QuotationController extends Controller
      */
     public function show($id)
     {
-        $quotation = Quotation::with(['customer', 'items', 'convertedInvoice'])->findOrFail($id);
+        $quotation = Quotation::with([
+            'customer', 'convertedInvoice',
+            // Product picture, model and feature list print on letterhead quotations
+            'items.product:id,name,brand,model,image,features,description,unit',
+        ])->findOrFail($id);
         return response()->json(['data' => $quotation]);
     }
 
@@ -421,6 +425,7 @@ class QuotationController extends Controller
 
             // Auto-create journal entry for the new invoice
             $this->createJournalEntry($invoice);
+            app(\App\Services\Accounting\StockService::class)->deductForInvoice($invoice);
 
             // Mark quotation as converted
             $quotation->update([

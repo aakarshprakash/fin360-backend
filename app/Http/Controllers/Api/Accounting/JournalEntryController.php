@@ -81,8 +81,8 @@ class JournalEntryController extends Controller
         }
 
         return DB::transaction(function () use ($validated, $totalDebit, $totalCredit) {
-            $nextNum = JournalEntry::count() + 1;
-            $entryNumber = 'JE-' . str_pad($nextNum, 5, '0', STR_PAD_LEFT);
+            // Highest JE- number + 1 (a count repeats after deletions; JE-INV-… etc. are ignored)
+            $entryNumber = app(\App\Services\Accounting\DocumentNumberService::class)->next(JournalEntry::class, 'entry_number', 'JE-');
 
             $entry = JournalEntry::create([
                 'entry_number' => $entryNumber,

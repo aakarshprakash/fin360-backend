@@ -19,6 +19,7 @@ class InvoiceSettingsController extends Controller
      * Rules: 'bool', 'hex', 'int:min:max', 'in:a,b,c', 'str:maxLength'.
      */
     private const LAYOUT_SCHEMA = [
+        'style.design'                => 'in:modern,boxed',
         'style.accent_color'          => 'hex',
         'style.font'                  => 'in:modern,classic,clean',
         'style.text_size'             => 'in:small,normal,large',
@@ -28,6 +29,7 @@ class InvoiceSettingsController extends Controller
         'logo.position'               => 'in:left,center,right',
         'header.title'                => 'str:40',
         'header.subtitle'             => 'str:60',
+        'header.tagline'              => 'str:300',
         'header.show_address'         => 'bool',
         'header.show_contact'         => 'bool',
         'header.show_state'           => 'bool',
@@ -35,7 +37,12 @@ class InvoiceSettingsController extends Controller
         'details.seller_gstin'        => 'bool',
         'details.place_of_supply'     => 'bool',
         'details.customer_gstin'      => 'bool',
+        'details.customer_pan'        => 'bool',
+        'details.contact_person'      => 'bool',
+        'details.due_date'            => 'bool',
+        'details.ship_to'             => 'bool',
         'columns.hsn'                 => 'bool',
+        'columns.uom'                 => 'bool',
         'columns.taxable_value'       => 'bool',
         'columns.gst_rate'            => 'bool',
         'columns.gst_amount'          => 'bool',
@@ -46,13 +53,26 @@ class InvoiceSettingsController extends Controller
         'sections.notes'              => 'bool',
         'sections.footer_message'     => 'bool',
         'sections.computer_generated' => 'bool',
+        'sections.declaration'        => 'bool',
+        'sections.received_note'      => 'bool',
+        'sections.page_number'        => 'bool',
         'labels.bill_to'              => 'str:30',
+        'labels.ship_to'              => 'str:30',
+        'labels.description'          => 'str:40',
+        'labels.notes'                => 'str:30',
         'labels.bank_details'         => 'str:30',
         'labels.terms_heading'        => 'str:40',
         'labels.signatory'            => 'str:40',
         'signature.show'              => 'bool',
         'signature.for_company'       => 'bool',
+        'texts.declaration'           => 'str:600',
+        'texts.received_note'         => 'str:150',
+        'texts.closing_note'          => 'str:150',
     ];
+
+    /** Custom fields a template may define (values are typed on each invoice) */
+    private const MAX_FIELDS = 8;
+    private const FIELD_POSITIONS = ['details', 'footer'];
 
     /** GET /api/accounting/invoice-settings */
     public function index()
@@ -84,7 +104,7 @@ class InvoiceSettingsController extends Controller
             'terms_and_conditions'  => ['termsAndConditions', 'nullable|string|max:5000'],
             'default_payment_terms' => ['defaultPaymentTerms', 'nullable|string|max:100'],
             'invoice_logo'          => ['invoiceLogo', 'nullable|string|max:500'],
-            'invoice_theme'         => ['invoiceTheme', 'nullable|string|in:default,letterhead'],
+            'invoice_theme'         => ['invoiceTheme', 'nullable|string|in:default,letterhead,classic'],
         ];
         $rules = ['layout' => 'nullable|array'];
         foreach ($fields as $snake => [$camel, $rule]) {
@@ -149,6 +169,8 @@ class InvoiceSettingsController extends Controller
                     $ok = is_string($value) && in_array($value, explode(',', $arg1), true);
                     break;
                 case 'str':
+                    // Laravel turns empty strings into null (ConvertEmptyStringsToNull)
+                    $value = $value ?? '';
                     $ok = is_string($value) && mb_strlen($value) <= (int) $arg1;
                     $value = is_string($value) ? trim(strip_tags($value)) : $value;
                     break;
@@ -160,6 +182,37 @@ class InvoiceSettingsController extends Controller
             $clean[$section][$key] = $value;
         }
 
+        if (array_key_exists('fields', $input)) {
+            $clean['fields'] = $this->sanitizeFields($input['fields']);
+        }
+
+        return $clean;
+    }
+
+    /**
+     * Custom fields: [{ id, label, position }]. Ids are what invoices store
+     * their values under, so they must survive the client's key case
+     * conversion: lower-case letters and digits only.
+     */
+    private function sanitizeFields($fields): array
+    {
+        if (!is_array($fields) || count($fields) > self::MAX_FIELDS) {
+            throw ValidationException::withMessages(['layout.fields' => 'Up to ' . self::MAX_FIELDS . ' custom fields are allowed.']);
+        }
+        $clean = [];
+        $seen  = [];
+        foreach (array_values($fields) as $i => $field) {
+            $id       = $field['id'] ?? null;
+            $label    = is_string($field['label'] ?? null) ? trim(strip_tags($field['label'])) : null;
+            $position = $field['position'] ?? 'details';
+            if (!is_string($id) || !preg_match('/^[a-z][a-z0-9]{0,23}$/', $id) || isset($seen[$id])
+                || $label === null || $label === '' || mb_strlen($label) > 40
+                || !in_array($position, self::FIELD_POSITIONS, true)) {
+                throw ValidationException::withMessages(["layout.fields.{$i}" => 'Each custom field needs a name (up to 40 characters).']);
+            }
+            $seen[$id] = true;
+            $clean[]   = ['id' => $id, 'label' => $label, 'position' => $position];
+        }
         return $clean;
     }
 

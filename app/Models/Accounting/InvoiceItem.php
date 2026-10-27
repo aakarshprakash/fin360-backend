@@ -12,7 +12,7 @@ class InvoiceItem extends Model
     protected $table = 'invoice_items';
 
     protected $fillable = [
-        'invoice_id', 'description', 'hsn_code', 'product_id', 'quantity', 'unit_price',
+        'invoice_id', 'description', 'hsn_code', 'product_id', 'quantity', 'unit', 'unit_price',
         'discount', 'tax_rate', 'tax_amount', 'total', 'account_id',
     ];
 

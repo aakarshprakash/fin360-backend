@@ -29,5 +29,11 @@ class QuotationItem extends Model
     {
         return $this->belongsTo(Quotation::class);
     }
+
+    // Kept even if the product is later deleted, so old quotations still print
+    public function product()
+    {
+        return $this->belongsTo(Product::class)->withTrashed();
+    }
 }
 

@@ -55,6 +55,8 @@ class AccountingCustomerController extends Controller
             'email'        => 'nullable|email|max:191',
             'phone'        => 'nullable|string|max:30',
             'gst_number'   => 'nullable|string|max:50',
+            'pan'          => 'nullable|string|max:20',
+            'contact_person' => 'nullable|string|max:150',
             'address'      => 'nullable|string|max:500',
             'city'         => 'nullable|string|max:100',
             'state'        => 'nullable|string|max:100',
@@ -83,6 +85,8 @@ class AccountingCustomerController extends Controller
             'email'        => 'nullable|email|max:191',
             'phone'        => 'nullable|string|max:30',
             'gst_number'   => 'nullable|string|max:50',
+            'pan'          => 'nullable|string|max:20',
+            'contact_person' => 'nullable|string|max:150',
             'address'      => 'nullable|string|max:500',
             'city'         => 'nullable|string|max:100',
             'state'        => 'nullable|string|max:100',
@@ -192,7 +196,8 @@ class AccountingCustomerController extends Controller
 
         $totalInvoiced = $invoices->sum('total');
         $totalPaid     = $invoices->sum('amount_paid');
-        $outstanding   = $totalInvoiced - $totalPaid;
+        $totalCredited = $invoices->sum('amount_credited');
+        $outstanding   = $totalInvoiced - $totalPaid - $totalCredited;
 
         return response()->json([
             'data' => [

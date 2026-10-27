@@ -70,8 +70,8 @@ class LedgerPostingService
     public function reverseEntry(JournalEntry $entry): JournalEntry
     {
         return DB::transaction(function () use ($entry) {
-            $nextNum = JournalEntry::count() + 1;
-            $entryNumber = 'JE-REV-' . str_pad($nextNum, 5, '0', STR_PAD_LEFT);
+            // Highest JE-REV number + 1: a count-based number repeats after deletions
+            $entryNumber = app(DocumentNumberService::class)->next(JournalEntry::class, 'entry_number', 'JE-REV-');
 
             $reversal = JournalEntry::create([
                 'entry_number' => $entryNumber,

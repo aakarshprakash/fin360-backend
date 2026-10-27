@@ -14,7 +14,7 @@ class AccountingCustomer extends Model
     protected $table = 'accounting_customers';
 
     protected $fillable = [
-        'name', 'email', 'phone', 'gst_number', 'address',
+        'name', 'email', 'phone', 'contact_person', 'gst_number', 'pan', 'address',
         'city', 'state', 'country', 'postal_code',
         'currency', 'credit_limit', 'balance',
         'crm_customer_id', 'user_id',

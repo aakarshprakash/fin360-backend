@@ -25,7 +25,7 @@ class AccountingDashboardController extends Controller
 
         $totalReceivable = Invoice::where('status', '!=', 'paid')
             ->where('status', '!=', 'cancelled')
-            ->selectRaw('COALESCE(SUM(total - amount_paid), 0) as total')
+            ->selectRaw('COALESCE(SUM(total - amount_paid - amount_credited), 0) as total')
             ->value('total');
 
         $totalPayable = Bill::where('status', '!=', 'paid')
@@ -90,7 +90,7 @@ class AccountingDashboardController extends Controller
         $prevExpense = $this->expenseBetween($prevFrom, $prevTo);
 
         $openInvoices = Invoice::whereNotIn('status', ['paid', 'cancelled']);
-        $outstanding  = (clone $openInvoices)->selectRaw('COALESCE(SUM(total - amount_paid), 0) as t')->value('t');
+        $outstanding  = (clone $openInvoices)->selectRaw('COALESCE(SUM(total - amount_paid - amount_credited), 0) as t')->value('t');
         $openCount    = (clone $openInvoices)->count();
 
         // Six months ending with the selected period's month
@@ -224,7 +224,7 @@ class AccountingDashboardController extends Controller
                     'id'             => $inv->id,
                     'invoice_number' => $inv->invoice_number,
                     'customer'       => optional($inv->customer)->name ?? $inv->customer_name,
-                    'balance'        => round($inv->total - $inv->amount_paid, 2),
+                    'balance'        => round($inv->total - $inv->amount_paid - $inv->amount_credited, 2),
                     'due_date'       => $inv->due_date ? Carbon::parse($inv->due_date)->toDateString() : null,
                     'due_in_days'    => $inv->due_date ? $today->diffInDays(Carbon::parse($inv->due_date), false) : null,
                 ];

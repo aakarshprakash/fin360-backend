@@ -39,12 +39,12 @@ class BulkOperationController extends Controller
 
         if ($validated['status'] === 'paid') {
             $unpaidCount = Invoice::whereIn('id', $validated['ids'])
-                ->whereColumn('amount_paid', '<', 'total')
+                ->whereRaw('amount_paid + amount_credited < total - 0.005')
                 ->count();
 
             if ($unpaidCount > 0) {
                 return response()->json([
-                    'message' => "Cannot mark {$unpaidCount} invoice(s) as paid without full payment recorded. Record payments first.",
+                    'message' => "{$unpaidCount} invoice(s) still have an amount outstanding. Record payments or credit notes for them first.",
                 ], 422);
             }
         }

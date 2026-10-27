@@ -396,6 +396,7 @@ class ProformaInvoiceController extends Controller
             }
 
             $this->createJournalEntry($invoice);
+            app(\App\Services\Accounting\StockService::class)->deductForInvoice($invoice);
 
             $proforma->update([
                 'status'               => 'converted',

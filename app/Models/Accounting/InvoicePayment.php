@@ -13,7 +13,7 @@ class InvoicePayment extends Model
     protected $table = 'invoice_payments';
 
     protected $fillable = [
-        'invoice_id', 'amount', 'date', 'method', 'reference', 'notes', 'user_id',
+        'invoice_id', 'amount', 'date', 'method', 'bank_account_id', 'reference', 'notes', 'user_id',
     ];
 
     protected $casts = [
