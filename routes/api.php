@@ -56,7 +56,7 @@ Route::get('/', function () {
     return response()->json([
         'app'       => 'Fin360 API',
         'status'    => 'running',
-        'version'   => '2.1.0',
+        'version'   => '2.2.0',
         'timestamp' => now()->toDateTimeString(),
     ]);
 });
@@ -378,6 +378,8 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::delete('/settings/signature',          [AccountingSettingsController::class, 'deleteSignature']);
             Route::post('/settings/logo',                 [AccountingSettingsController::class, 'uploadLogo']);
             Route::delete('/settings/logo',                [AccountingSettingsController::class, 'deleteLogo']);
+            Route::post('/settings/letterhead',           [AccountingSettingsController::class, 'uploadLetterhead']);
+            Route::delete('/settings/letterhead',         [AccountingSettingsController::class, 'deleteLetterhead']);
             Route::post('/settings/quotation-image/{slot}',   [AccountingSettingsController::class, 'uploadQuotationImage'])->where('slot', 'header|footer');
             Route::delete('/settings/quotation-image/{slot}', [AccountingSettingsController::class, 'deleteQuotationImage'])->where('slot', 'header|footer');
         });

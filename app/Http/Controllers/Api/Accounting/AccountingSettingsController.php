@@ -18,7 +18,7 @@ class AccountingSettingsController extends Controller
 {
     // File paths that only the upload endpoints may change
     private const UPLOAD_KEYS = [
-        'company'   => ['companyLogo', 'sealSignatureImage'],
+        'company'   => ['companyLogo', 'sealSignatureImage', 'letterheadImage'],
         'quotation' => ['headerImage', 'footerImage'],
     ];
 
@@ -27,7 +27,7 @@ class AccountingSettingsController extends Controller
         'validity' => 'str:500', 'gstNote' => 'str:500', 'deliveryTime' => 'str:500',
         'deliveryMode' => 'str:500', 'warranty' => 'str:500', 'paymentTerms' => 'str:500',
         'computerConfiguration' => 'str:500', 'training' => 'str:500',
-        'design'            => 'in:classic,letterhead',
+        'design'            => 'in:classic,letterhead,fullpage',
         'headerType'        => 'in:image,company,none',
         'footerType'        => 'in:image,text,none',
         'footerText'        => 'str:300',
@@ -86,6 +86,9 @@ class AccountingSettingsController extends Controller
                 if ($section === 'quotation') {
                     $values = $this->sanitizeQuotation($values);
                 }
+                if ($section === 'company') {
+                    $values = $this->sanitizeLetterheadMargins($values);
+                }
                 // Merge so a partial payload never wipes keys it didn't send (e.g. logo paths)
                 $changes[$section] = array_merge($setting->{$section} ?? [], $values);
             }
@@ -121,6 +124,52 @@ class AccountingSettingsController extends Controller
         $this->clearCompanyImage('sealSignatureImage');
 
         return response()->json(['message' => 'Signature removed successfully']);
+    }
+
+    /**
+     * POST /api/accounting/settings/letterhead  (multipart: image)
+     * The whole A4 page used behind invoices and quotations. PDF letterheads are
+     * converted to an image in the browser before they get here.
+     */
+    public function uploadLetterhead(Request $request)
+    {
+        $request->validate(['image' => 'required|image|mimes:jpg,jpeg,png,webp|max:10240']);
+
+        $setting = $this->setting();
+        $this->deleteStoredFile($setting->company['letterheadImage'] ?? null);
+
+        $path = $request->file('image')->storeAs(
+            'letterheads',
+            'page-' . Str::random(8) . '.' . $request->file('image')->extension(),
+            'public'
+        );
+        $setting->update(['company' => array_merge($setting->company ?? [], ['letterheadImage' => $path])]);
+
+        return response()->json(['message' => 'Letterhead uploaded', 'path' => $path]);
+    }
+
+    /** DELETE /api/accounting/settings/letterhead */
+    public function deleteLetterhead()
+    {
+        $this->clearCompanyImage('letterheadImage');
+
+        return response()->json(['message' => 'Letterhead removed']);
+    }
+
+    /** Clear space around the printed area of the letterhead, in mm */
+    private function sanitizeLetterheadMargins(array $values): array
+    {
+        $limits = ['letterheadTop' => [0, 120], 'letterheadBottom' => [0, 120], 'letterheadSide' => [5, 40]];
+        foreach ($limits as $key => [$min, $max]) {
+            if (!array_key_exists($key, $values)) {
+                continue;
+            }
+            if (!is_numeric($values[$key]) || $values[$key] < $min || $values[$key] > $max) {
+                throw ValidationException::withMessages(["company.{$key}" => "{$key} must be between {$min} and {$max} mm."]);
+            }
+            $values[$key] = (int) $values[$key];
+        }
+        return $values;
     }
 
     /** POST /api/accounting/settings/quotation-image/{slot}  (slot: header|footer) */
@@ -351,6 +400,11 @@ class AccountingSettingsController extends Controller
             'baseCurrency'       => 'INR',
             'sealSignatureImage' => '',
             'companyLogo'        => '',
+            // Full-page letterhead behind invoices/quotations; margins in mm
+            'letterheadImage'    => '',
+            'letterheadTop'      => 52,
+            'letterheadBottom'   => 35,
+            'letterheadSide'     => 15,
         ];
     }
 

@@ -19,7 +19,7 @@ class InvoiceSettingsController extends Controller
      * Rules: 'bool', 'hex', 'int:min:max', 'in:a,b,c', 'str:maxLength'.
      */
     private const LAYOUT_SCHEMA = [
-        'style.design'                => 'in:modern,boxed',
+        'style.design'                => 'in:modern,boxed,page,page-boxed',
         'style.accent_color'          => 'hex',
         'style.font'                  => 'in:modern,classic,clean',
         'style.text_size'             => 'in:small,normal,large',
@@ -104,7 +104,7 @@ class InvoiceSettingsController extends Controller
             'terms_and_conditions'  => ['termsAndConditions', 'nullable|string|max:5000'],
             'default_payment_terms' => ['defaultPaymentTerms', 'nullable|string|max:100'],
             'invoice_logo'          => ['invoiceLogo', 'nullable|string|max:500'],
-            'invoice_theme'         => ['invoiceTheme', 'nullable|string|in:default,letterhead,classic'],
+            'invoice_theme'         => ['invoiceTheme', 'nullable|string|in:default,letterhead,classic,fullpage,classicpage'],
         ];
         $rules = ['layout' => 'nullable|array'];
         foreach ($fields as $snake => [$camel, $rule]) {

@@ -1,8 +1,14 @@
 FIN360 BACKEND — MANUAL DEPLOYMENT
-Release 2.1.0
+Release 2.2.0
 ==============================================================================
 
-What 2.1.0 adds (on top of 2.0.0, the Lead CRM -> Fin360 conversion):
+What 2.2.0 adds (no new database migrations):
+  * Full-page letterhead: upload an A4 PDF or image once; invoices and
+    quotations print on it, with proper page breaks.
+  * New invoice templates "Full-page letterhead" and "Classic GST on
+    letterhead"; new quotation design "Full-page letterhead".
+
+What 2.1.0 added (on top of 2.0.0, the Lead CRM -> Fin360 conversion):
   * Invoices: part payments, credit notes, voiding payments/credit notes,
     "Classic GST" boxed invoice template, Ship To, UOM, custom fields.
   * Products: pictures, SKU/brand/model, feature lists, stock tracking
@@ -11,9 +17,9 @@ What 2.1.0 adds (on top of 2.0.0, the Lead CRM -> Fin360 conversion):
     product pictures and an editable Terms & Conditions page.
 
 If the server is still on the old Lead CRM version, this one release takes
-it straight to 2.1.0 — follow every step below.
+it straight to 2.2.0 — follow every step below.
 
-Package:  fin360-backend-2.1.0.zip
+Package:  fin360-backend-2.2.0.zip
 Server:   cPanel, PHP 8.1+ (production runs 8.1), MySQL 5.7+ / MariaDB 10.4+
 Layout:   the document root is the PROJECT ROOT (the folder containing .env,
           artisan, app/, public/). The root index.php + .htaccess forward
@@ -65,7 +71,7 @@ Before updating, open this in a private browser window:
 ------------------------------------------------------------------------------
 3. UPLOAD AND EXTRACT
 ------------------------------------------------------------------------------
-  a) File Manager > open the backend folder > Upload fin360-backend-2.1.0.zip
+  a) File Manager > open the backend folder > Upload fin360-backend-2.2.0.zip
   b) Select the zip > Extract > into the SAME folder. Allow overwriting.
   c) Delete the zip afterwards.
 
@@ -129,7 +135,7 @@ With Terminal (cPanel > Advanced > Terminal), in the backend folder:
 product pictures and quotation letterhead images are served through it.)
 
 Expected output of migrate. From the old Lead CRM version you get all six;
-from 2.0.0 only the last three:
+from 2.0.0 only the last three; from 2.1.0 "Nothing to migrate":
 
     Migrated: 2026_10_26_000001_remove_crm_permissions
     Migrated: 2026_10_26_000002_make_accounting_settings_company_wide
@@ -151,7 +157,7 @@ No Terminal? Use a one-time cron job instead:
 7. VERIFY
 ------------------------------------------------------------------------------
   [ ] https://leadcrm.peoplenex.online/api
-        -> {"app":"Fin360 API","status":"running","version":"2.1.0",...}
+        -> {"app":"Fin360 API","status":"running","version":"2.2.0",...}
   [ ] https://leadcrm.peoplenex.online/.env                     -> 403
   [ ] https://leadcrm.peoplenex.online/storage/logs/laravel.log -> 403
   [ ] https://leadcrm.peoplenex.online/composer.json            -> 403
@@ -164,6 +170,12 @@ No Terminal? Use a one-time cron job instead:
   [ ] An unpaid invoice > Record payment (part amount) > status "Partially
       paid"; then Void it from "Payments & credit notes".
   [ ] Settings > Quotation Template opens; Letterhead design previews.
+  [ ] Settings > Invoice Template > "Classic GST on letterhead" > upload the
+      letterhead PDF > Save Template. An invoice preview shows it. Uploads are
+      not in this package, so this must be done on the live site. If the
+      upload is refused as too large, raise upload_max_filesize /
+      post_max_size in cPanel > MultiPHP INI Editor.
+  [ ] Settings > Quotation Template > "Full-page letterhead" > Save Settings.
 
 
 ------------------------------------------------------------------------------
