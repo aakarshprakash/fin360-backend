@@ -56,7 +56,7 @@ Route::get('/', function () {
     return response()->json([
         'app'       => 'Fin360 API',
         'status'    => 'running',
-        'version'   => '2.2.0',
+        'version'   => '2.3.0',
         'timestamp' => now()->toDateTimeString(),
     ]);
 });

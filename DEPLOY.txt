@@ -1,8 +1,17 @@
 FIN360 BACKEND — MANUAL DEPLOYMENT
-Release 2.2.0
+Release 2.3.0
 ==============================================================================
 
-What 2.2.0 adds (no new database migrations):
+What 2.3.0 fixes (no new database migrations):
+  * Line discounts were subtracted twice on quotations, proformas and invoices.
+    New documents are correct; see "CORRECT DOCUMENTS ALREADY SAVED" below for
+    the old ones.
+  * Lines now add up exactly to the totals. A line discount can't exceed the
+    line's value.
+  * Deploy this backend BEFORE relying on the new frontend: an older backend
+    keeps subtracting discounts twice.
+
+What 2.2.0 added:
   * Full-page letterhead: upload an A4 PDF or image once; invoices and
     quotations print on it, with proper page breaks.
   * New invoice templates "Full-page letterhead" and "Classic GST on
@@ -17,9 +26,9 @@ What 2.1.0 added (on top of 2.0.0, the Lead CRM -> Fin360 conversion):
     product pictures and an editable Terms & Conditions page.
 
 If the server is still on the old Lead CRM version, this one release takes
-it straight to 2.2.0 — follow every step below.
+it straight to 2.3.0 — follow every step below.
 
-Package:  fin360-backend-2.2.0.zip
+Package:  fin360-backend-2.3.0.zip
 Server:   cPanel, PHP 8.1+ (production runs 8.1), MySQL 5.7+ / MariaDB 10.4+
 Layout:   the document root is the PROJECT ROOT (the folder containing .env,
           artisan, app/, public/). The root index.php + .htaccess forward
@@ -71,7 +80,7 @@ Before updating, open this in a private browser window:
 ------------------------------------------------------------------------------
 3. UPLOAD AND EXTRACT
 ------------------------------------------------------------------------------
-  a) File Manager > open the backend folder > Upload fin360-backend-2.2.0.zip
+  a) File Manager > open the backend folder > Upload fin360-backend-2.3.0.zip
   b) Select the zip > Extract > into the SAME folder. Allow overwriting.
   c) Delete the zip afterwards.
 
@@ -135,7 +144,7 @@ With Terminal (cPanel > Advanced > Terminal), in the backend folder:
 product pictures and quotation letterhead images are served through it.)
 
 Expected output of migrate. From the old Lead CRM version you get all six;
-from 2.0.0 only the last three; from 2.1.0 "Nothing to migrate":
+from 2.0.0 only the last three; from 2.1.0 or later "Nothing to migrate":
 
     Migrated: 2026_10_26_000001_remove_crm_permissions
     Migrated: 2026_10_26_000002_make_accounting_settings_company_wide
@@ -157,7 +166,7 @@ No Terminal? Use a one-time cron job instead:
 7. VERIFY
 ------------------------------------------------------------------------------
   [ ] https://leadcrm.peoplenex.online/api
-        -> {"app":"Fin360 API","status":"running","version":"2.2.0",...}
+        -> {"app":"Fin360 API","status":"running","version":"2.3.0",...}
   [ ] https://leadcrm.peoplenex.online/.env                     -> 403
   [ ] https://leadcrm.peoplenex.online/storage/logs/laravel.log -> 403
   [ ] https://leadcrm.peoplenex.online/composer.json            -> 403
@@ -176,6 +185,33 @@ No Terminal? Use a one-time cron job instead:
       upload is refused as too large, raise upload_max_filesize /
       post_max_size in cPanel > MultiPHP INI Editor.
   [ ] Settings > Quotation Template > "Full-page letterhead" > Save Settings.
+
+
+------------------------------------------------------------------------------
+8. CORRECT DOCUMENTS ALREADY SAVED (needs Terminal)
+------------------------------------------------------------------------------
+Documents saved before 2.3.0 with a line discount have the discount taken off
+twice. Take the database backup from step 1 first if you skipped it, then:
+
+  a) List them. This changes nothing:
+
+       php artisan fin360:repair-double-discounts
+
+  b) Correct quotations and proforma invoices (no effect on the accounts):
+
+       php artisan fin360:repair-double-discounts --apply
+
+  c) Invoices raise what the customer owes, and the customer has already seen
+     the lower figure, so decide this one deliberately. To correct UNPAID
+     invoices and post an adjusting journal entry (JE-ADJ-INV-…):
+
+       php artisan fin360:repair-double-discounts --apply --invoices
+
+Invoices with payments or credit notes are never changed. They show as
+"REVIEW BY HAND"; settle those with the customer and correct them manually.
+
+Afterwards the list command should say "No affected documents found", apart
+from any invoices you chose to leave or review by hand.
 
 
 ------------------------------------------------------------------------------

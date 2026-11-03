@@ -10,6 +10,7 @@ use App\Models\Accounting\ProformaInvoice;
 use App\Models\Accounting\ProformaInvoiceItem;
 use App\Services\Accounting\DocumentNumberService;
 use App\Services\Accounting\LedgerPostingService;
+use App\Services\Accounting\LineAmounts;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
@@ -107,16 +108,21 @@ class ProformaInvoiceController extends Controller
             $proformaNumber = $this->nextNumber();
 
             $subtotal = 0;
+
+            $lineDiscounts = 0;
+
             $totalTax = 0;
             $itemsData = [];
 
             foreach ($validated['items'] as $item) {
-                $lineSubtotal = ($item['quantity'] * $item['unit_price']) - ($item['discount'] ?? 0);
+                $line = LineAmounts::of($item);
+                $lineSubtotal = $line['net'];
                 $taxRate = $item['tax_rate'] ?? 0;
-                $taxAmount = $lineSubtotal * ($taxRate / 100);
-                $lineTotal = $lineSubtotal + $taxAmount;
+                $taxAmount = $line['tax'];
+                $lineTotal = $line['total'];
 
-                $subtotal += $lineSubtotal;
+                $subtotal += $line['gross']; // before discount
+                $lineDiscounts += $line['discount'];
                 $totalTax += $taxAmount;
 
                 $itemsData[] = [
@@ -125,15 +131,18 @@ class ProformaInvoiceController extends Controller
                     'product_id'  => $item['product_id'] ?? null,
                     'quantity'    => $item['quantity'],
                     'unit_price'  => $item['unit_price'],
-                    'discount'    => $item['discount'] ?? 0,
+                    'discount'    => $line['discount'],
                     'tax_rate'    => $taxRate,
                     'tax_amount'  => round($taxAmount, 2),
                     'total'       => round($lineTotal, 2),
                 ];
             }
 
-            $discount = $validated['discount'] ?? 0;
-            $total = $subtotal - $discount + $totalTax;
+            // Line discounts make up the document discount; a separate one applies only without them
+            $subtotal = round($subtotal, 2);
+            $discount = round($lineDiscounts > 0 ? $lineDiscounts : ($validated['discount'] ?? 0), 2);
+            $totalTax = round($totalTax, 2);
+            $total = round($subtotal - $discount + $totalTax, 2);
             $validUntil = $validated['valid_until'] ?? date('Y-m-d', strtotime($validated['date'] . ' +15 days'));
 
             $proforma = ProformaInvoice::create([
@@ -210,16 +219,19 @@ class ProformaInvoiceController extends Controller
 
             if (isset($validated['items'])) {
                 $subtotal = 0;
+                $lineDiscounts = 0;
                 $totalTax = 0;
                 $itemsData = [];
 
                 foreach ($validated['items'] as $item) {
-                    $lineSubtotal = ($item['quantity'] * $item['unit_price']) - ($item['discount'] ?? 0);
+                    $line = LineAmounts::of($item);
+                    $lineSubtotal = $line['net'];
                     $taxRate = $item['tax_rate'] ?? 0;
-                    $taxAmount = $lineSubtotal * ($taxRate / 100);
-                    $lineTotal = $lineSubtotal + $taxAmount;
+                    $taxAmount = $line['tax'];
+                    $lineTotal = $line['total'];
 
-                    $subtotal += $lineSubtotal;
+                    $subtotal += $line['gross']; // before discount
+                    $lineDiscounts += $line['discount'];
                     $totalTax += $taxAmount;
 
                     $itemsData[] = [
@@ -228,15 +240,18 @@ class ProformaInvoiceController extends Controller
                         'product_id'  => $item['product_id'] ?? null,
                         'quantity'    => $item['quantity'],
                         'unit_price'  => $item['unit_price'],
-                        'discount'    => $item['discount'] ?? 0,
+                        'discount'    => $line['discount'],
                         'tax_rate'    => $taxRate,
                         'tax_amount'  => round($taxAmount, 2),
                         'total'       => round($lineTotal, 2),
                     ];
                 }
 
-                $discount = $validated['discount'] ?? $proforma->discount;
-                $total = $subtotal - $discount + $totalTax;
+                // Line discounts make up the document discount; a separate one applies only without them
+                $subtotal = round($subtotal, 2);
+                $discount = round($lineDiscounts > 0 ? $lineDiscounts : ($validated['discount'] ?? 0), 2);
+                $totalTax = round($totalTax, 2);
+                $total = round($subtotal - $discount + $totalTax, 2);
 
                 $fieldsToUpdate['subtotal'] = round($subtotal, 2);
                 $fieldsToUpdate['tax']      = round($totalTax, 2);

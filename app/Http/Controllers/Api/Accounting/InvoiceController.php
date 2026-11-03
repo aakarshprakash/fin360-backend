@@ -12,6 +12,7 @@ use App\Models\Accounting\JournalEntry;
 use App\Models\Accounting\AccountingSetting;
 use App\Services\Accounting\DocumentNumberService;
 use App\Services\Accounting\LedgerPostingService;
+use App\Services\Accounting\LineAmounts;
 use App\Services\Accounting\StockService;
 use Barryvdh\DomPDF\Facade\Pdf;
 use Illuminate\Http\Request;
@@ -112,16 +113,19 @@ class InvoiceController extends Controller
 
             // Calculate totals
             $subtotal = 0;
+            $lineDiscounts = 0;
             $totalTax = 0;
             $itemsData = [];
 
             foreach ($validated['items'] as $item) {
-                $lineSubtotal = ($item['quantity'] * $item['unit_price']) - ($item['discount'] ?? 0);
+                $line = LineAmounts::of($item);
+                $lineSubtotal = $line['net'];
                 $taxRate = $item['tax_rate'] ?? 0;
-                $taxAmount = $lineSubtotal * ($taxRate / 100);
-                $lineTotal = $lineSubtotal + $taxAmount;
+                $taxAmount = $line['tax'];
+                $lineTotal = $line['total'];
 
-                $subtotal += $lineSubtotal;
+                $subtotal += $line['gross']; // before discount
+                $lineDiscounts += $line['discount'];
                 $totalTax += $taxAmount;
 
                 $itemsData[] = [
@@ -131,7 +135,7 @@ class InvoiceController extends Controller
                     'quantity'    => $item['quantity'],
                     'unit'        => $item['unit'] ?? null,
                     'unit_price'  => $item['unit_price'],
-                    'discount'    => $item['discount'] ?? 0,
+                    'discount'    => $line['discount'],
                     'tax_rate'    => $taxRate,
                     'tax_amount'  => round($taxAmount, 2),
                     'total'       => round($lineTotal, 2),
@@ -139,8 +143,11 @@ class InvoiceController extends Controller
                 ];
             }
 
-            $discount = $validated['discount'] ?? 0;
-            $total = $subtotal - $discount + $totalTax;
+            // Line discounts make up the document discount; a separate one applies only without them
+            $subtotal = round($subtotal, 2);
+            $discount = round($lineDiscounts > 0 ? $lineDiscounts : ($validated['discount'] ?? 0), 2);
+            $totalTax = round($totalTax, 2);
+            $total = round($subtotal - $discount + $totalTax, 2);
 
             $invoice = Invoice::create([
                 'invoice_number' => $invoiceNumber,
