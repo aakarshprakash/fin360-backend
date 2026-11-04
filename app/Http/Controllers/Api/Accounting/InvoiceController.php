@@ -22,6 +22,18 @@ use Illuminate\Support\Facades\DB;
 class InvoiceController extends Controller
 {
     private LedgerPostingService $ledger;
+    private const ITEM_RULES = [
+        'items.*.description'=> 'required|string|max:500',
+        'items.*.hsn_code'   => 'nullable|string|max:20',
+        'items.*.product_id' => 'nullable|integer|exists:products,id',
+        'items.*.quantity'   => 'required|numeric|min:0.01',
+        'items.*.unit'       => 'nullable|string|max:20',
+        'items.*.unit_price' => 'required|numeric|min:0',
+        'items.*.discount'   => 'nullable|numeric|min:0',
+        'items.*.tax_rate'   => 'nullable|numeric|min:0',
+        'items.*.account_id' => 'nullable|exists:accounting_accounts,id',
+    ];
+
     private DocumentNumberService $numbering;
     private StockService $stock;
 
@@ -83,7 +95,7 @@ class InvoiceController extends Controller
     /** POST /api/accounting/invoices */
     public function store(Request $request)
     {
-        $validated = $request->validate([
+        $validated = $request->validate(array_merge([
             'customer_id'        => 'nullable|exists:accounting_customers,id',
             'date'               => 'required|date',
             'due_date'           => 'nullable|date|after_or_equal:date',
@@ -95,59 +107,16 @@ class InvoiceController extends Controller
             'ship_to'            => 'nullable|string|max:1000',
             'extra_fields'       => 'nullable|array|max:12',
             'extra_fields.*'     => 'nullable|string|max:200',
+            'round_total'        => 'nullable|boolean',
             'items'              => 'required|array|min:1',
-            'items.*.description'=> 'required|string|max:500',
-            'items.*.hsn_code'   => 'nullable|string|max:20',
-            'items.*.product_id' => 'nullable|integer|exists:products,id',
-            'items.*.quantity'   => 'required|numeric|min:0.01',
-            'items.*.unit'       => 'nullable|string|max:20',
-            'items.*.unit_price' => 'required|numeric|min:0',
-            'items.*.discount'   => 'nullable|numeric|min:0',
-            'items.*.tax_rate'   => 'nullable|numeric|min:0',
-            'items.*.account_id' => 'nullable|exists:accounting_accounts,id',
-        ]);
+        ], self::ITEM_RULES));
 
         return DB::transaction(function () use ($validated) {
             // Generate invoice number
             $invoiceNumber = $this->numbering->next(Invoice::class, 'invoice_number', 'INV-');
 
-            // Calculate totals
-            $subtotal = 0;
-            $lineDiscounts = 0;
-            $totalTax = 0;
-            $itemsData = [];
-
-            foreach ($validated['items'] as $item) {
-                $line = LineAmounts::of($item);
-                $lineSubtotal = $line['net'];
-                $taxRate = $item['tax_rate'] ?? 0;
-                $taxAmount = $line['tax'];
-                $lineTotal = $line['total'];
-
-                $subtotal += $line['gross']; // before discount
-                $lineDiscounts += $line['discount'];
-                $totalTax += $taxAmount;
-
-                $itemsData[] = [
-                    'description' => $item['description'],
-                    'hsn_code'    => $item['hsn_code'] ?? null,
-                    'product_id'  => $item['product_id'] ?? null,
-                    'quantity'    => $item['quantity'],
-                    'unit'        => $item['unit'] ?? null,
-                    'unit_price'  => $item['unit_price'],
-                    'discount'    => $line['discount'],
-                    'tax_rate'    => $taxRate,
-                    'tax_amount'  => round($taxAmount, 2),
-                    'total'       => round($lineTotal, 2),
-                    'account_id'  => $item['account_id'] ?? null,
-                ];
-            }
-
-            // Line discounts make up the document discount; a separate one applies only without them
-            $subtotal = round($subtotal, 2);
-            $discount = round($lineDiscounts > 0 ? $lineDiscounts : ($validated['discount'] ?? 0), 2);
-            $totalTax = round($totalTax, 2);
-            $total = round($subtotal - $discount + $totalTax, 2);
+            ['items' => $itemsData, 'subtotal' => $subtotal, 'discount' => $discount, 'tax' => $totalTax, 'round_off' => $roundOff, 'total' => $total]
+                = $this->priceItems($validated['items'], $validated['discount'] ?? 0, (bool) ($validated['round_total'] ?? false));
 
             $invoice = Invoice::create([
                 'invoice_number' => $invoiceNumber,
@@ -159,6 +128,7 @@ class InvoiceController extends Controller
                 'subtotal'       => round($subtotal, 2),
                 'discount'       => round($discount, 2),
                 'tax'            => round($totalTax, 2),
+                'round_off'      => $roundOff,
                 'total'          => round($total, 2),
                 'amount_paid'    => 0,
                 'status'         => 'pending',
@@ -175,7 +145,7 @@ class InvoiceController extends Controller
             }
 
             // Auto-create journal entry
-            $this->createJournalEntry($invoice, $subtotal, $discount, $totalTax, $total);
+            $this->createJournalEntry($invoice, $subtotal, $discount, $totalTax, $total, $roundOff);
 
             // Take sold quantities out of stock for tracked products
             $this->stock->deductForInvoice($invoice);
@@ -189,12 +159,16 @@ class InvoiceController extends Controller
         });
     }
 
-    /** PUT /api/accounting/invoices/{id} */
+    /**
+     * PUT /api/accounting/invoices/{id}
+     * Sending items replaces the lines, recomputes the totals and posts the
+     * difference to the ledger. The original entry stays as it was.
+     */
     public function update(Request $request, $id)
     {
-        $invoice = Invoice::findOrFail($id);
+        $invoice = Invoice::with('items')->findOrFail($id);
 
-        $validated = $request->validate([
+        $validated = $request->validate(array_merge([
             'customer_id'   => 'nullable|exists:accounting_customers,id',
             'date'          => 'sometimes|required|date',
             'due_date'      => 'nullable|date',
@@ -207,18 +181,136 @@ class InvoiceController extends Controller
             'extra_fields'  => 'nullable|array|max:12',
             'extra_fields.*'=> 'nullable|string|max:200',
             'status'        => 'nullable|string|in:draft,pending,paid,overdue,cancelled',
-        ]);
+            'round_total'   => 'nullable|boolean',
+            'items'         => 'sometimes|required|array|min:1',
+        ], self::ITEM_RULES));
+
+        if (!empty($validated['status']) && ($problem = $this->statusProblem($invoice, $validated['status']))) {
+            return response()->json(['message' => $problem], 422);
+        }
+        if (isset($validated['items']) && ($problem = $this->itemsLockedBecause($invoice))) {
+            return response()->json(['message' => $problem], 422);
+        }
 
         if (array_key_exists('extra_fields', $validated)) {
             $validated['extra_fields'] = $this->cleanExtraFields($validated['extra_fields']);
         }
-        $invoice->update($validated);
-        $invoice->load(['customer', 'items', 'payments']);
+        // Totals follow the lines; the discount only changes together with them
+        $documentDiscount = $validated['discount'] ?? 0;
+        $newItems = $validated['items'] ?? null;
+        // Keep rounding as it was unless the form says otherwise
+        $roundTotal = (bool) ($validated['round_total'] ?? ((float) $invoice->round_off != 0));
+        unset($validated['discount'], $validated['items'], $validated['round_total']);
+
+        DB::transaction(function () use ($invoice, $validated, $newItems, $documentDiscount, $roundTotal) {
+            $invoice->update($validated);
+            if ($newItems !== null) {
+                $this->replaceItems($invoice, $newItems, $documentDiscount, $roundTotal);
+            }
+        });
 
         return response()->json([
             'message' => 'Invoice updated successfully',
-            'data'    => $invoice,
+            'data'    => $this->invoiceWithRelations($invoice->id),
         ]);
+    }
+
+    /** Why this invoice's lines can't be edited, if so */
+    private function itemsLockedBecause(Invoice $invoice): ?string
+    {
+        if ((float) $invoice->amount_paid > 0 || (float) $invoice->amount_credited > 0) {
+            return "This invoice has payments or credit notes, so its items can't be changed. Void them first, or raise a credit note for the difference.";
+        }
+        if (in_array($invoice->status, ['paid', 'cancelled'], true)) {
+            return "A {$invoice->status} invoice's items can't be changed.";
+        }
+        return null;
+    }
+
+    /** Swap an invoice's lines, then bring its totals, the ledger and stock into line */
+    private function replaceItems(Invoice $invoice, array $items, float $documentDiscount, bool $roundTotal): void
+    {
+        $oldNet   = (float) $invoice->subtotal - (float) $invoice->discount;
+        $oldTax   = (float) $invoice->tax;
+        $oldRound = (float) $invoice->round_off;
+        $oldTotal = (float) $invoice->total;
+        $stockBefore = $this->stock->quantitiesOn($invoice);
+
+        $priced = $this->priceItems($items, $documentDiscount, $roundTotal);
+
+        $invoice->items()->delete();
+        foreach ($priced['items'] as $itemData) {
+            $invoice->items()->create($itemData);
+        }
+        $invoice->update([
+            'subtotal' => $priced['subtotal'],
+            'discount' => $priced['discount'],
+            'tax'      => $priced['tax'],
+            'round_off' => $priced['round_off'],
+            'total'    => $priced['total'],
+        ]);
+        $invoice->load('items');
+
+        $description = 'Items edited - ' . $invoice->invoice_number;
+        $this->ledger->postAdjustment([
+            'entry_number' => $this->numbering->next(JournalEntry::class, 'entry_number', 'JE-ADJ-INV-' . $invoice->id . '-'),
+            'date'         => now()->toDateString(),
+            'reference'    => $invoice->invoice_number,
+            'description'  => 'Adjustment for edited invoice ' . $invoice->invoice_number,
+            'source_type'  => 'invoice_adjustment',
+            'source_id'    => $invoice->id,
+            'user_id'      => Auth::id(),
+        ], [
+            [$this->ledger->getOrCreateSystemAccount('1100', 'Accounts Receivable', 'Assets'), $priced['total'] - $oldTotal, $description],
+            [$this->ledger->getOrCreateSystemAccount('4100', 'Sales Revenue', 'Income'), $oldNet - ($priced['subtotal'] - $priced['discount']), $description],
+            [$this->ledger->getOrCreateSystemAccount('2200', 'GST Payable', 'Liabilities'), $oldTax - $priced['tax'], $description],
+            [$this->ledger->getOrCreateSystemAccount('4900', 'Round Off', 'Income'), $oldRound - $priced['round_off'], $description],
+        ]);
+
+        $this->stock->syncInvoice($invoice, $stockBefore);
+    }
+
+    /** Line rows and document totals for a set of submitted lines */
+    private function priceItems(array $items, float $documentDiscount, bool $roundTotal): array
+    {
+        $subtotal = 0;
+        $lineDiscounts = 0;
+        $totalTax = 0;
+        $itemsData = [];
+
+        foreach ($items as $item) {
+            $line = LineAmounts::of($item);
+
+            $subtotal += $line['gross']; // before discount
+            $lineDiscounts += $line['discount'];
+            $totalTax += $line['tax'];
+
+            $itemsData[] = [
+                'description' => $item['description'],
+                'hsn_code'    => $item['hsn_code'] ?? null,
+                'product_id'  => $item['product_id'] ?? null,
+                'quantity'    => $item['quantity'],
+                'unit'        => $item['unit'] ?? null,
+                'unit_price'  => $item['unit_price'],
+                'discount'    => $line['discount'],
+                'tax_rate'    => $item['tax_rate'] ?? 0,
+                'tax_amount'  => $line['tax'],
+                'total'       => $line['total'],
+                'account_id'  => $item['account_id'] ?? null,
+            ];
+        }
+
+        // Line discounts make up the document discount; a separate one applies only without them
+        $subtotal = round($subtotal, 2);
+        $discount = round($lineDiscounts > 0 ? $lineDiscounts : $documentDiscount, 2);
+        $totalTax = round($totalTax, 2);
+
+        return [
+            'items'    => $itemsData,
+            'subtotal' => $subtotal,
+            'discount' => $discount,
+            'tax'      => $totalTax,
+        ] + LineAmounts::totals($subtotal, $discount, $totalTax, $roundTotal);
     }
 
     /**
@@ -252,6 +344,7 @@ class InvoiceController extends Controller
         }
         DB::transaction(function () use ($invoice) {
             $this->stock->restoreForInvoice($invoice);
+            $this->ledger->reverseEntriesFor(['invoice', 'invoice_adjustment'], $invoice->id);
             $invoice->delete();
         });
 
@@ -270,15 +363,8 @@ class InvoiceController extends Controller
             'status' => 'required|string|in:draft,pending,paid,overdue,cancelled',
         ]);
 
-        if ($validated['status'] === 'paid' && $this->outstanding($invoice) > 0.005) {
-            return response()->json([
-                'message' => 'This invoice still has ' . number_format($this->outstanding($invoice), 2) . ' outstanding. Record a payment or a credit note for it first.',
-            ], 422);
-        }
-        if ($validated['status'] === 'cancelled' && ((float) $invoice->amount_paid > 0 || (float) $invoice->amount_credited > 0)) {
-            return response()->json([
-                'message' => 'This invoice has payments or credit notes. Void them before cancelling it.',
-            ], 422);
+        if ($problem = $this->statusProblem($invoice, $validated['status'])) {
+            return response()->json(['message' => $problem], 422);
         }
 
         $invoice->update(['status' => $validated['status']]);
@@ -533,6 +619,18 @@ class InvoiceController extends Controller
         ]);
     }
 
+    /** Why an invoice can't take this status, if so */
+    private function statusProblem(Invoice $invoice, string $status): ?string
+    {
+        if ($status === 'paid' && $this->outstanding($invoice) > 0.005) {
+            return 'This invoice still has ' . number_format($this->outstanding($invoice), 2) . ' outstanding. Record a payment or a credit note for it first.';
+        }
+        if ($status === 'cancelled' && ((float) $invoice->amount_paid > 0 || (float) $invoice->amount_credited > 0)) {
+            return 'This invoice has payments or credit notes. Void them before cancelling it.';
+        }
+        return null;
+    }
+
     /** What the customer still owes on an invoice */
     private function outstanding(Invoice $invoice): float
     {
@@ -618,7 +716,7 @@ class InvoiceController extends Controller
         return response()->json(['data' => $creditNotes]);
     }
 
-    private function createJournalEntry(Invoice $invoice, float $subtotal, float $discount, float $tax, float $total)
+    private function createJournalEntry(Invoice $invoice, float $subtotal, float $discount, float $tax, float $total, float $roundOff = 0)
     {
         $lines = [
             [
@@ -644,13 +742,22 @@ class InvoiceController extends Controller
             ];
         }
 
+        if ($roundOff != 0) {
+            $lines[] = [
+                'account_id'  => $this->ledger->getOrCreateSystemAccount('4900', 'Round Off', 'Income'),
+                'debit'       => max(-$roundOff, 0),
+                'credit'      => max($roundOff, 0),
+                'description' => 'Round off - ' . $invoice->invoice_number,
+            ];
+        }
+
         $this->ledger->createAndPostEntry([
             'entry_number' => 'JE-INV-' . $invoice->id,
             'date'         => $invoice->date,
             'reference'    => $invoice->invoice_number,
             'description'  => 'Auto entry for invoice ' . $invoice->invoice_number,
-            'total_debit'  => round($total, 2),
-            'total_credit' => round($total, 2),
+            'total_debit'  => round(array_sum(array_column($lines, 'debit')), 2),
+            'total_credit' => round(array_sum(array_column($lines, 'credit')), 2),
             'source_type'  => 'invoice',
             'source_id'    => $invoice->id,
             'user_id'      => Auth::id(),

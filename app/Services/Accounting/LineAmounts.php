@@ -11,6 +11,19 @@ namespace App\Services\Accounting;
  */
 class LineAmounts
 {
+    /**
+     * A document's total. Rounding goes to the nearest rupee and the paise
+     * difference is kept as round_off, so total = subtotal - discount + tax + round_off.
+     * @return array{total: float, round_off: float}
+     */
+    public static function totals(float $subtotal, float $discount, float $tax, bool $roundTotal): array
+    {
+        $exact = round($subtotal - $discount + $tax, 2);
+        $total = $roundTotal ? (float) round($exact) : $exact;
+
+        return ['total' => $total, 'round_off' => round($total - $exact, 2)];
+    }
+
     /** @return array{gross: float, discount: float, net: float, tax: float, total: float} */
     public static function of(array $item): array
     {

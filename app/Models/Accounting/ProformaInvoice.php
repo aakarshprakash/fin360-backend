@@ -16,7 +16,7 @@ class ProformaInvoice extends Model
     protected $fillable = [
         'proforma_number', 'customer_id', 'customer_name',
         'date', 'valid_until', 'currency', 'exchange_rate',
-        'subtotal', 'discount', 'tax', 'total',
+        'subtotal', 'discount', 'tax', 'round_off', 'total',
         'status', 'notes', 'terms_and_conditions',
         'branch', 'quotation_id', 'converted_invoice_id', 'user_id',
         'use_signature',
@@ -29,6 +29,7 @@ class ProformaInvoice extends Model
         'subtotal'      => 'decimal:2',
         'discount'      => 'decimal:2',
         'tax'           => 'decimal:2',
+        'round_off'     => 'decimal:2',
         'total'         => 'decimal:2',
         'use_signature' => 'boolean',
     ];

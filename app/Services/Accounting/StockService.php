@@ -54,16 +54,23 @@ class StockService
         });
     }
 
-    /** Deduct stock for the tracked products on a new invoice */
-    public function deductForInvoice(Invoice $invoice): void
+    /** Quantity per product across an invoice's lines */
+    public function quantitiesOn(Invoice $invoice): array
     {
-        $invoice->loadMissing('items');
         $qtyByProduct = [];
         foreach ($invoice->items as $item) {
             if ($item->product_id) {
                 $qtyByProduct[$item->product_id] = ($qtyByProduct[$item->product_id] ?? 0) + (float) $item->quantity;
             }
         }
+        return $qtyByProduct;
+    }
+
+    /** Deduct stock for the tracked products on a new invoice */
+    public function deductForInvoice(Invoice $invoice): void
+    {
+        $invoice->loadMissing('items');
+        $qtyByProduct = $this->quantitiesOn($invoice);
         if (!$qtyByProduct) {
             return;
         }
@@ -75,6 +82,35 @@ class StockService
                 'reference'  => $invoice->invoice_number,
                 'invoice_id' => $invoice->id,
             ]);
+        }
+    }
+
+    /**
+     * Move stock by what an edit changed. $before is quantitiesOn() from before
+     * the edit. Stock goes back only up to what this invoice actually took: it
+     * may have been raised before the product's tracking was switched on.
+     */
+    public function syncInvoice(Invoice $invoice, array $before): void
+    {
+        $after = $this->quantitiesOn($invoice);
+        $net = ProductStockMovement::where('invoice_id', $invoice->id)
+            ->selectRaw('product_id, SUM(quantity) as qty')
+            ->groupBy('product_id')
+            ->pluck('qty', 'product_id');
+
+        foreach (array_keys($before + $after) as $productId) {
+            $change = ($before[$productId] ?? 0) - ($after[$productId] ?? 0);
+            if ($change > 0) {
+                $change = min($change, max(-(float) ($net[$productId] ?? 0), 0));
+            }
+            $product = Product::withTrashed()->where('track_stock', true)->find($productId);
+            if ($product) {
+                $this->move($product, $change > 0 ? 'invoice_reversal' : 'invoice', $change, [
+                    'reference'  => $invoice->invoice_number,
+                    'note'       => 'Invoice edited',
+                    'invoice_id' => $invoice->id,
+                ]);
+            }
         }
     }
 

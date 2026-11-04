@@ -98,7 +98,7 @@ class RepairDoubleDiscounts extends Command
 
         return [
             'subtotal' => round($gross, 2),
-            'total'    => round($gross - $discount + (float) $doc->tax, 2),
+            'total'    => round($gross - $discount + (float) $doc->tax + (float) $doc->round_off, 2),
         ];
     }
 

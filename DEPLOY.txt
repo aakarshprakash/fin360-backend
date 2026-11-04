@@ -1,6 +1,46 @@
 FIN360 BACKEND — MANUAL DEPLOYMENT
-Release 2.3.0
+Release 2.4.0
 ==============================================================================
+
+What 2.4.0 adds and fixes (2 new database migrations, one of them changes data):
+  * PRODUCT PRICES ARE CORRECTED BY THIS RELEASE. Read "PRODUCT PRICES" below
+    before running step 6.
+  * Invoice and bill line items can now be edited and saved. The change is
+    posted to the accounts as a new adjusting entry and stock follows it.
+    Items are locked once a payment or credit note exists.
+  * Deleting an invoice or bill now reverses its journal entries. Bill
+    payments can be voided; overpaying a bill is refused; a bill with
+    payments can't be deleted or cancelled until they are voided.
+  * Round off to the nearest rupee on quotations, proforma invoices and
+    invoices, with its own Round Off line (accounts: 4900 Round Off, created
+    automatically). Quotation and proforma round-off carries into the invoice.
+  * The discount in rupees on a line is now taken off the price INCLUDING GST
+    (650000 less 2500 = 647500). GST is then charged on the discounted value.
+  * IGST, or CGST + SGST, is printed from the customer's state or GSTIN.
+    Quotation totals read: Total, Special Discount, Sub Total, tax,
+    Round Off, Net Amount, in every quotation design.
+  * New command to tidy the accounts: see step 9.
+  * Deploy this backend BEFORE the new frontend goes live (Cloudflare builds
+    it as soon as it is pushed).
+
+PRODUCT PRICES (read before step 6)
+  Prices in the product list were entered with 5% GST already included, but
+  invoices and quotations add GST on top of a product's price (650000 became
+  682500). Migration 2026_11_04_000002 corrects this: EVERY product is set to
+  5% GST and its price becomes price / 1.05 (650000 -> 619047.62, which shows
+  as 650000.00 again with GST). Saved invoices and quotations are not changed.
+    * Run it only if every product's current price includes 5% GST. Check
+      first in phpMyAdmin:  select id, name, unit_price, tax_rate from products;
+    * It saves the old prices to storage/app/backups/
+      product-prices-before-gst-correction.csv and "php artisan
+      migrate:rollback --step=1" puts them back from that file.
+    * It runs once. To leave prices exactly as they are, mark it as done
+      BEFORE step 6 with this SQL in phpMyAdmin (use the batch number of the
+      last row of the migrations table):
+        insert into migrations (migration, batch) values
+          ('2026_11_04_000002_convert_product_prices_to_exclude_gst', 99);
+    * A few products come back one paisa off when GST is added again (6190.49
+      instead of 6190.48). That cannot be avoided with prices stored before GST.
 
 What 2.3.0 fixes (no new database migrations):
   * Line discounts were subtracted twice on quotations, proformas and invoices.
@@ -26,9 +66,9 @@ What 2.1.0 added (on top of 2.0.0, the Lead CRM -> Fin360 conversion):
     product pictures and an editable Terms & Conditions page.
 
 If the server is still on the old Lead CRM version, this one release takes
-it straight to 2.3.0 — follow every step below.
+it straight to 2.4.0 — follow every step below.
 
-Package:  fin360-backend-2.3.0.zip
+Package:  fin360-backend-2.4.0.zip
 Server:   cPanel, PHP 8.1+ (production runs 8.1), MySQL 5.7+ / MariaDB 10.4+
 Layout:   the document root is the PROJECT ROOT (the folder containing .env,
           artisan, app/, public/). The root index.php + .htaccess forward
@@ -80,7 +120,7 @@ Before updating, open this in a private browser window:
 ------------------------------------------------------------------------------
 3. UPLOAD AND EXTRACT
 ------------------------------------------------------------------------------
-  a) File Manager > open the backend folder > Upload fin360-backend-2.3.0.zip
+  a) File Manager > open the backend folder > Upload fin360-backend-2.4.0.zip
   b) Select the zip > Extract > into the SAME folder. Allow overwriting.
   c) Delete the zip afterwards.
 
@@ -143,8 +183,9 @@ With Terminal (cPanel > Advanced > Terminal), in the backend folder:
 (storage:link may say the link already exists — that's fine. Uploaded
 product pictures and quotation letterhead images are served through it.)
 
-Expected output of migrate. From the old Lead CRM version you get all six;
-from 2.0.0 only the last three; from 2.1.0 or later "Nothing to migrate":
+Expected output of migrate. From the old Lead CRM version you get all eight;
+from 2.0.0 only the last five; from 2.1.0 the last two; from 2.3.0 the last
+two as well (2.2.0 and 2.3.0 had no migrations):
 
     Migrated: 2026_10_26_000001_remove_crm_permissions
     Migrated: 2026_10_26_000002_make_accounting_settings_company_wide
@@ -152,6 +193,8 @@ from 2.0.0 only the last three; from 2.1.0 or later "Nothing to migrate":
     Migrated: 2026_10_28_000001_add_print_fields_to_invoices
     Migrated: 2026_10_29_000001_add_catalog_and_stock_to_products
     Migrated: 2026_10_30_000001_add_credit_notes_and_payment_accounts
+    Migrated: 2026_11_04_000001_add_round_off_to_documents
+    Migrated: 2026_11_04_000002_convert_product_prices_to_exclude_gst
 
 No Terminal? Use a one-time cron job instead:
   cPanel > Cron Jobs > add a job running every minute with this command
@@ -166,7 +209,7 @@ No Terminal? Use a one-time cron job instead:
 7. VERIFY
 ------------------------------------------------------------------------------
   [ ] https://leadcrm.peoplenex.online/api
-        -> {"app":"Fin360 API","status":"running","version":"2.3.0",...}
+        -> {"app":"Fin360 API","status":"running","version":"2.4.0",...}
   [ ] https://leadcrm.peoplenex.online/.env                     -> 403
   [ ] https://leadcrm.peoplenex.online/storage/logs/laravel.log -> 403
   [ ] https://leadcrm.peoplenex.online/composer.json            -> 403
@@ -185,6 +228,16 @@ No Terminal? Use a one-time cron job instead:
       upload is refused as too large, raise upload_max_filesize /
       post_max_size in cPanel > MultiPHP INI Editor.
   [ ] Settings > Quotation Template > "Full-page letterhead" > Save Settings.
+  [ ] Products: a product that showed 650000 now shows 650000 in the "With GST"
+      box and 619047.62 before GST. All products show 5% GST.
+  [ ] New quotation: pick that product, type 2500 in the discount rupee box:
+      Net amount 647500.00. Tick "Round off to the nearest rupee" and an
+      amount with paise rounds to a whole rupee with a Round Off line.
+  [ ] A customer with a GSTIN starting with a different state's code than
+      yours: the quotation prints IGST @ 5%; with your own state's code it
+      prints CGST @ 2.5% and SGST @ 2.5%.
+  [ ] An unpaid invoice > Edit: change a quantity > Save. The invoice and its
+      Accounting Entry panel follow; Journal Entries shows a JE-ADJ-INV entry.
 
 
 ------------------------------------------------------------------------------
@@ -212,6 +265,28 @@ Invoices with payments or credit notes are never changed. They show as
 
 Afterwards the list command should say "No affected documents found", apart
 from any invoices you chose to leave or review by hand.
+
+
+------------------------------------------------------------------------------
+9. CLEAN UP DELETED INVOICES AND BILLS (needs Terminal)
+------------------------------------------------------------------------------
+Before 2.4.0, deleting an invoice or bill left its journal entries in the
+accounts, so Accounts Receivable / Payable still counted it. Take the backup
+from step 1 first, then:
+
+  a) List them. This changes nothing:
+
+       php artisan fin360:repair-deleted-documents
+
+  b) Reverse the entries of deleted documents that have no payments or credit
+     notes:
+
+       php artisan fin360:repair-deleted-documents --apply
+
+Deleted documents that HAD payments or credit notes are only listed ("REVIEW BY
+HAND"). The money may really have moved; decide each one with the customer
+or vendor, because reversing only the sale would leave the accounts wrong the
+other way. Running the command again changes nothing further.
 
 
 ------------------------------------------------------------------------------
@@ -247,6 +322,15 @@ WHAT THE MIGRATIONS CHANGE IN THE DATABASE
    date/subtotal/tax/reason to credit notes. Existing payments are untouched;
    existing invoices start with 0 credited.
 
+7. add_round_off_to_documents
+   Adds round_off (default 0) to quotations, proforma_invoices and invoices.
+   Existing documents keep their totals and show no Round Off line.
+
+8. convert_product_prices_to_exclude_gst   (changes data - see PRODUCT PRICES)
+   Sets every product to 5% GST and divides its price by 1.05. The old prices
+   are saved to storage/app/backups/product-prices-before-gst-correction.csv
+   first; rolling this migration back restores them.
+
 The roles seeder adds the Finance Manager, Accountant and Viewer roles and
 refreshes the Super Admin / Admin permission lists. Existing roles and users
 keep their assignments.
@@ -260,7 +344,10 @@ Behaviour changes users may notice:
   * An invoice becomes "Paid" by recording payments / credit notes; it can
     no longer be marked paid by hand while money is outstanding.
   * An invoice with payments or credit notes can't be deleted until they
-    are voided.
+    are voided. The same applies to a bill with payments.
+  * An invoice or bill with payments can't have its items edited. A paid or
+    cancelled one can't either.
+  * The discount in rupees is off the price with GST (see above).
 
 
 ------------------------------------------------------------------------------

@@ -56,7 +56,7 @@ Route::get('/', function () {
     return response()->json([
         'app'       => 'Fin360 API',
         'status'    => 'running',
-        'version'   => '2.3.0',
+        'version'   => '2.4.0',
         'timestamp' => now()->toDateTimeString(),
     ]);
 });
@@ -270,6 +270,7 @@ Route::middleware('auth:sanctum')->group(function () {
             Route::delete('/bills/{id}',                 [BillController::class, 'destroy']);
             Route::patch('/bills/{id}/status',           [BillController::class, 'updateStatus']);
             Route::post('/bills/{id}/payments',          [BillController::class, 'addPayment']);
+            Route::delete('/bills/{id}/payments/{paymentId}', [BillController::class, 'deletePayment']);
             Route::post('/debit-notes',                  [BillController::class, 'createDebitNote']);
         });
 

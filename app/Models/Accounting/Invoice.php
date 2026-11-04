@@ -16,7 +16,7 @@ class Invoice extends Model
     protected $fillable = [
         'invoice_number', 'customer_id', 'date', 'due_date',
         'currency', 'exchange_rate', 'subtotal', 'discount',
-        'tax', 'total', 'amount_paid', 'amount_credited', 'status', 'notes', 'user_id',
+        'tax', 'round_off', 'total', 'amount_paid', 'amount_credited', 'status', 'notes', 'user_id',
         'use_signature', 'ship_to', 'extra_fields',
     ];
 
@@ -27,6 +27,7 @@ class Invoice extends Model
         'subtotal'      => 'decimal:2',
         'discount'      => 'decimal:2',
         'tax'           => 'decimal:2',
+        'round_off'     => 'decimal:2',
         'total'         => 'decimal:2',
         'amount_paid'   => 'decimal:2',
         'amount_credited' => 'decimal:2',

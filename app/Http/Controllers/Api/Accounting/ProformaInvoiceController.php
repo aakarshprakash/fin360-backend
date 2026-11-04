@@ -94,6 +94,7 @@ class ProformaInvoiceController extends Controller
             'branch'                 => 'nullable|string|max:150',
             'discount'               => 'nullable|numeric|min:0',
             'use_signature'          => 'nullable|boolean',
+            'round_total'            => 'nullable|boolean',
             'items'                  => 'required|array|min:1',
             'items.*.description'    => 'required|string|max:500',
             'items.*.hsn_code'       => 'nullable|string|max:20',
@@ -142,7 +143,7 @@ class ProformaInvoiceController extends Controller
             $subtotal = round($subtotal, 2);
             $discount = round($lineDiscounts > 0 ? $lineDiscounts : ($validated['discount'] ?? 0), 2);
             $totalTax = round($totalTax, 2);
-            $total = round($subtotal - $discount + $totalTax, 2);
+            ['total' => $total, 'round_off' => $roundOff] = LineAmounts::totals($subtotal, $discount, $totalTax, (bool) ($validated['round_total'] ?? false));
             $validUntil = $validated['valid_until'] ?? date('Y-m-d', strtotime($validated['date'] . ' +15 days'));
 
             $proforma = ProformaInvoice::create([
@@ -156,6 +157,7 @@ class ProformaInvoiceController extends Controller
                 'subtotal'             => round($subtotal, 2),
                 'discount'             => round($discount, 2),
                 'tax'                  => round($totalTax, 2),
+                'round_off'            => $roundOff,
                 'total'                => round($total, 2),
                 'status'               => 'draft',
                 'notes'                => $validated['notes'] ?? null,
@@ -204,6 +206,7 @@ class ProformaInvoiceController extends Controller
             'branch'                 => 'nullable|string|max:150',
             'discount'               => 'nullable|numeric|min:0',
             'use_signature'          => 'nullable|boolean',
+            'round_total'            => 'nullable|boolean',
             'items'                  => 'sometimes|required|array|min:1',
             'items.*.description'    => 'required|string|max:500',
             'items.*.hsn_code'       => 'nullable|string|max:20',
@@ -215,7 +218,7 @@ class ProformaInvoiceController extends Controller
         ]);
 
         return DB::transaction(function () use ($proforma, $validated) {
-            $fieldsToUpdate = collect($validated)->except('items')->toArray();
+            $fieldsToUpdate = collect($validated)->except(['items', 'round_total'])->toArray();
 
             if (isset($validated['items'])) {
                 $subtotal = 0;
@@ -251,8 +254,11 @@ class ProformaInvoiceController extends Controller
                 $subtotal = round($subtotal, 2);
                 $discount = round($lineDiscounts > 0 ? $lineDiscounts : ($validated['discount'] ?? 0), 2);
                 $totalTax = round($totalTax, 2);
-                $total = round($subtotal - $discount + $totalTax, 2);
+                // Keep rounding as it was unless the form says otherwise
+                $roundTotal = (bool) ($validated['round_total'] ?? ((float) $proforma->round_off != 0));
+                ['total' => $total, 'round_off' => $roundOff] = LineAmounts::totals($subtotal, $discount, $totalTax, $roundTotal);
 
+                $fieldsToUpdate['round_off'] = $roundOff;
                 $fieldsToUpdate['subtotal'] = round($subtotal, 2);
                 $fieldsToUpdate['tax']      = round($totalTax, 2);
                 $fieldsToUpdate['discount'] = round($discount, 2);
@@ -387,6 +393,7 @@ class ProformaInvoiceController extends Controller
                 'subtotal'       => $proforma->subtotal,
                 'discount'       => $proforma->discount,
                 'tax'            => $proforma->tax,
+                'round_off'      => $proforma->round_off,
                 'total'          => $proforma->total,
                 'amount_paid'    => 0,
                 'status'         => 'pending',
@@ -501,14 +508,22 @@ class ProformaInvoiceController extends Controller
                 'description' => 'GST Payable - ' . $invoice->invoice_number,
             ];
         }
+        if ((float) $invoice->round_off != 0) {
+            $lines[] = [
+                'account_id'  => $this->ledger->getOrCreateSystemAccount('4900', 'Round Off', 'Income'),
+                'debit'       => max(-(float) $invoice->round_off, 0),
+                'credit'      => max((float) $invoice->round_off, 0),
+                'description' => 'Round off - ' . $invoice->invoice_number,
+            ];
+        }
 
         $this->ledger->createAndPostEntry([
             'entry_number' => 'JE-INV-' . $invoice->id,
             'date'         => $invoice->date,
             'reference'    => $invoice->invoice_number,
             'description'  => 'Auto entry for invoice ' . $invoice->invoice_number . ' (from proforma invoice)',
-            'total_debit'  => round($invoice->total, 2),
-            'total_credit' => round($invoice->total, 2),
+            'total_debit'  => round(array_sum(array_column($lines, 'debit')), 2),
+            'total_credit' => round(array_sum(array_column($lines, 'credit')), 2),
             'source_type'  => 'invoice',
             'source_id'    => $invoice->id,
             'user_id'      => Auth::id(),

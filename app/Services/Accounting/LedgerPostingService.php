@@ -5,6 +5,7 @@ namespace App\Services\Accounting;
 use App\Models\Accounting\Account;
 use App\Models\Accounting\JournalEntry;
 use App\Models\Accounting\JournalEntryLine;
+use Illuminate\Support\Collection;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\DB;
 
@@ -100,6 +101,60 @@ class LedgerPostingService
 
             return $reversal->load('lines.account:id,code,name,type');
         });
+    }
+
+    /**
+     * Post the difference left by editing a document. $changes lists
+     * [account_id, signed amount, description]: positive debits the account,
+     * negative credits it, zero is left out. Nothing is posted when nothing changed.
+     */
+    public function postAdjustment(array $header, array $changes): ?JournalEntry
+    {
+        $lines = [];
+        $totalDebit = 0;
+        foreach ($changes as [$accountId, $amount, $description]) {
+            $amount = round($amount, 2);
+            if ($amount == 0) {
+                continue;
+            }
+            $lines[] = [
+                'account_id'  => $accountId,
+                'debit'       => max($amount, 0),
+                'credit'      => max(-$amount, 0),
+                'description' => $description,
+            ];
+            $totalDebit += max($amount, 0);
+        }
+        if (!$lines) {
+            return null;
+        }
+
+        return $this->createAndPostEntry(array_merge($header, [
+            'total_debit'  => round($totalDebit, 2),
+            'total_credit' => round($totalDebit, 2),
+        ]), $lines);
+    }
+
+    /**
+     * A document's posted entries that haven't been reversed yet. A reversal
+     * leaves the original 'posted' and names it in its reference.
+     */
+    public function unreversedEntries(array $sourceTypes, int $sourceId): Collection
+    {
+        return JournalEntry::whereIn('source_type', $sourceTypes)
+            ->where('source_id', $sourceId)
+            ->where('status', 'posted')
+            ->get()
+            ->reject(fn ($entry) => JournalEntry::where('reference', 'Reversal of ' . $entry->entry_number)->exists())
+            ->values();
+    }
+
+    /** Take a document's entries back out of the ledger (when it is deleted or a payment is voided) */
+    public function reverseEntriesFor(array $sourceTypes, int $sourceId): void
+    {
+        foreach ($this->unreversedEntries($sourceTypes, $sourceId) as $entry) {
+            $this->reverseEntry($entry);
+        }
     }
 
     /**
