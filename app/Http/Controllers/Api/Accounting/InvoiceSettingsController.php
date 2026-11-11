@@ -46,6 +46,7 @@ class InvoiceSettingsController extends Controller
         'columns.taxable_value'       => 'bool',
         'columns.gst_rate'            => 'bool',
         'columns.gst_amount'          => 'bool',
+        'columns.gst_split'           => 'bool',
         'sections.amount_in_words'    => 'bool',
         'sections.bank_details'       => 'bool',
         'sections.payment_options'    => 'bool',
@@ -104,7 +105,7 @@ class InvoiceSettingsController extends Controller
             'terms_and_conditions'  => ['termsAndConditions', 'nullable|string|max:5000'],
             'default_payment_terms' => ['defaultPaymentTerms', 'nullable|string|max:100'],
             'invoice_logo'          => ['invoiceLogo', 'nullable|string|max:500'],
-            'invoice_theme'         => ['invoiceTheme', 'nullable|string|in:default,letterhead,classic,fullpage,classicpage'],
+            'invoice_theme'         => ['invoiceTheme', 'nullable|string|in:default,letterhead,classic,fullpage,classicpage,gstsplit'],
         ];
         $rules = ['layout' => 'nullable|array'];
         foreach ($fields as $snake => [$camel, $rule]) {

@@ -1,8 +1,21 @@
 FIN360 BACKEND — MANUAL DEPLOYMENT
-Release 2.4.0
+Release 2.4.1
 ==============================================================================
 
-What 2.4.0 adds and fixes (2 new database migrations, one of them changes data):
+What 2.4.1 adds (no database migrations):
+  * New invoice template "GST per item": the Classic GST grid with Total, Dis
+    and GST (Per, Amount) on every line, a TOTAL row under the items, GST by
+    rate in the summary, and Order No / Order Date. Settings > Invoice
+    Template. The template builder has a matching "GST per item layout"
+    switch for any ruled template.
+  * Only one backend file changes (the invoice template settings accept the
+    new template). Deploy it BEFORE the new frontend is relied on: until
+    then, saving "GST per item" is refused as invalid.
+  * Coming from 2.4.0: steps 1-3 and 6 below are enough; migrate reports
+    "Nothing to migrate". Coming from anything older: follow every step,
+    including the 2.4.0 notes below.
+
+What 2.4.0 added (2 new database migrations, one of them changes data):
   * PRODUCT PRICES ARE CORRECTED BY THIS RELEASE. Read "PRODUCT PRICES" below
     before running step 6.
   * Invoice and bill line items can now be edited and saved. The change is
@@ -66,9 +79,9 @@ What 2.1.0 added (on top of 2.0.0, the Lead CRM -> Fin360 conversion):
     product pictures and an editable Terms & Conditions page.
 
 If the server is still on the old Lead CRM version, this one release takes
-it straight to 2.4.0 — follow every step below.
+it straight to 2.4.1 — follow every step below.
 
-Package:  fin360-backend-2.4.0.zip
+Package:  fin360-backend-2.4.1.zip
 Server:   cPanel, PHP 8.1+ (production runs 8.1), MySQL 5.7+ / MariaDB 10.4+
 Layout:   the document root is the PROJECT ROOT (the folder containing .env,
           artisan, app/, public/). The root index.php + .htaccess forward
@@ -120,7 +133,7 @@ Before updating, open this in a private browser window:
 ------------------------------------------------------------------------------
 3. UPLOAD AND EXTRACT
 ------------------------------------------------------------------------------
-  a) File Manager > open the backend folder > Upload fin360-backend-2.4.0.zip
+  a) File Manager > open the backend folder > Upload fin360-backend-2.4.1.zip
   b) Select the zip > Extract > into the SAME folder. Allow overwriting.
   c) Delete the zip afterwards.
 
@@ -209,7 +222,7 @@ No Terminal? Use a one-time cron job instead:
 7. VERIFY
 ------------------------------------------------------------------------------
   [ ] https://leadcrm.peoplenex.online/api
-        -> {"app":"Fin360 API","status":"running","version":"2.4.0",...}
+        -> {"app":"Fin360 API","status":"running","version":"2.4.1",...}
   [ ] https://leadcrm.peoplenex.online/.env                     -> 403
   [ ] https://leadcrm.peoplenex.online/storage/logs/laravel.log -> 403
   [ ] https://leadcrm.peoplenex.online/composer.json            -> 403
@@ -236,6 +249,9 @@ No Terminal? Use a one-time cron job instead:
   [ ] A customer with a GSTIN starting with a different state's code than
       yours: the quotation prints IGST @ 5%; with your own state's code it
       prints CGST @ 2.5% and SGST @ 2.5%.
+  [ ] Settings > Invoice Template > "GST per item" > Save Template. An
+      invoice preview shows Rate, Total, Dis, GST Per / Amount and Total on
+      each line and a TOTAL row under the items.
   [ ] An unpaid invoice > Edit: change a quantity > Save. The invoice and its
       Accounting Entry panel follow; Journal Entries shows a JE-ADJ-INV entry.
 
