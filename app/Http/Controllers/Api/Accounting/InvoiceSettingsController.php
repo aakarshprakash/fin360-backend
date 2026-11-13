@@ -105,7 +105,7 @@ class InvoiceSettingsController extends Controller
             'terms_and_conditions'  => ['termsAndConditions', 'nullable|string|max:5000'],
             'default_payment_terms' => ['defaultPaymentTerms', 'nullable|string|max:100'],
             'invoice_logo'          => ['invoiceLogo', 'nullable|string|max:500'],
-            'invoice_theme'         => ['invoiceTheme', 'nullable|string|in:default,letterhead,classic,fullpage,classicpage,gstsplit'],
+            'invoice_theme'         => ['invoiceTheme', 'nullable|string|in:default,letterhead,classic,fullpage,classicpage,gstsplit,gstsplitpage'],
         ];
         $rules = ['layout' => 'nullable|array'];
         foreach ($fields as $snake => [$camel, $rule]) {
